@@ -1,8 +1,8 @@
 # ...
 NAME = hyl
 DFLAGS = -g -O0 -DDEBUG_H -fsanitize=address -fsanitize-undefined-trap-on-error 
-CFLAGS = -Wall -Werror -Wno-unused -Wno-format-security -fPIC -std=c99 -Ivendor
-SFLAGS = -Wall -Werror -Wno-unused -Wno-format-security -std=c99 -Ivendor
+CFLAGS = -Wall -Werror -Wno-unused -Wno-format-security -fPIC -std=c99 -Iinclude -Ivendor
+SFLAGS = -Wall -Werror -Wno-unused -Wno-format-security -std=c99
 CC = clang
 SRC = \
 	vendor/zhttp.c \
@@ -25,6 +25,11 @@ TARGET=
 lib: $(OBJ)
 	-@test ! -d lib && mkdir lib/
 	$(CC) $(SFLAGS) -shared -llua -lsqlite3 -o lib/lib$(NAME).so $(OBJ)
+
+
+# example - test the library with a real copy of hypno
+example:
+	hypno-server --dump --start --config examples/config.lua -l lib
 
 
 # debug - turn debugging on

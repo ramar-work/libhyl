@@ -1,9 +1,8 @@
+#include <hypno.h>
 #include "lua.h"
-
 
 #define FPRINTF( ... ) \
 	fprintf( stderr, __VA_ARGS__ )
-
 
 const char libname[] = "lua";
 
@@ -453,12 +452,25 @@ static lua_State * lua_load_libs( lua_State **L ) {
 
 
 //The entry point for a Lua application
-int app (struct HTTPBody *req, struct HTTPBody *res ) {
+const int filter 
+( int fd, struct HTTPBody *req, struct HTTPBody *res, struct cdata *conn ) {
+#if 0
+	//Test responses quickly
+	char er[2048] = {0};
+	char msg[2048] = {0};
+	snprintf( msg, sizeof(msg), "Yo, its Lua: %p", conn );
+	http_set_status( res, 200 ); 
+	http_set_ctype( res, "text/html" );
+	http_copy_content( res, msg, strlen( msg ) ); 
+	if ( !http_finalize_response( res, er, sizeof(er) ) ) {
+		return http_error( res, 500, er );
+	}
+#endif
 
 	//Define variables and error positions...
 	zTable zc, zm = {0};
 	zTable *zconfig = &zc, *zmodel = &zm, *zroutes = NULL, *croute = NULL;
-	char err[2048] = {0};
+	char err[ 128 ] = {0}, cpath[ 2048 ] = {0};
 	const char *db, *fqdn, *title, *spath, *root;
 	lua_State *L = NULL;
 	int clen = 0;
@@ -474,6 +486,11 @@ int app (struct HTTPBody *req, struct HTTPBody *res ) {
 		return http_error( res, 500, "%s\n", err );
 	}
 #else
+	//Get the actual path of the config file...
+	snprintf( cpath, sizeof( cpath ) - 1, "%s/%s", conn->hconfig->dir, "config.lua" );
+fprintf( stderr, "full cpath is: %s\n", cpath );
+return 0;
+
 	//If this fails, do something
 	if ( !lt_init( zconfig, NULL, 1024 ) ) {
 		return http_error( res, 500, "%s", "lt_init out of memory." );
@@ -538,7 +555,6 @@ int app (struct HTTPBody *req, struct HTTPBody *res ) {
 	//...
 	lua_loadlibs( L, functions, 1 );
 
-return 0;
 	//Open our extra libraries too (if requested via config file...)
 	//load_lua_libs( L );
 
