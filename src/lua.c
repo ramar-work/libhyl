@@ -488,8 +488,6 @@ const int filter
 #else
 	//Get the actual path of the config file...
 	snprintf( cpath, sizeof( cpath ) - 1, "%s/%s", conn->hconfig->dir, "config.lua" );
-fprintf( stderr, "full cpath is: %s\n", cpath );
-return 0;
 
 	//If this fails, do something
 	if ( !lt_init( zconfig, NULL, 1024 ) ) {
@@ -497,17 +495,23 @@ return 0;
 	}
 
 	//Open the configuration file
-	if ( !lua_exec_file( L, "config.lua", err, sizeof( err ) ) ) {
+	if ( !lua_exec_file( L, cpath, err, sizeof( err ) ) ) {
+		lt_free( zconfig );
+		lua_close( L );
 		return http_error( res, 500, "%s", err );
 	}
 
 	//If it's anything but a Lua table, we're in trouble
 	if ( !lua_istable( L, 1 ) ) {
+		lt_free( zconfig );
+		lua_close( L );
 		return http_error( res, 500, "%s", err );
 	}
 
 	//Convert the Lua values to real values for extraction.
 	if ( !lua_to_ztable( L, 1, zconfig ) ) {
+		lt_free( zconfig );
+		lua_close( L );
 		return http_error( res, 500, "%s", "Failed to convert Lua to zTable" );
 	}
 
@@ -515,11 +519,10 @@ return 0;
 	lua_pop( L, 1 );
 #endif
 
-#if 0
-	//EVERYTHING HERE REALLY SHOULD GO IN A PLACE OF ITS OWN...
-#else
 	//Get the rotues from the config file.
 	if ( !( zroutes = lt_copy_by_key( zconfig, rkey ) ) ) {
+		lt_free( zconfig );
+		lua_close( L );
 		return http_error( res, 500, "%s", "Failed to copy routes from config." );
 	}
 
@@ -539,6 +542,10 @@ return 0;
 
 	//Die when unavailable...
 	if ( !croute ) {
+		free_route_list( p.iroute_tlist );	
+		lt_free( zroutes );
+		lt_free( zconfig );
+		lua_close( L );
 		return http_error( res, 404, "Couldn't find path at %s\n", req->path );
 	}
 
@@ -549,7 +556,6 @@ return 0;
 	lt_free( zroutes );
 	free( zroutes );
 	lt_free( zconfig );
-#endif
 
 #if 1
 	//...
@@ -564,7 +570,7 @@ return 0;
 
 		if ( *f == 'a' ) {
 			//Define
-			char err[ 2048 ] = { 0 }, msymname[ 1024 ] = { 0 };
+			char err[ 2048 ] = { 0 }, msymname[ 1024 ] = { 0 }, mpath[ 2048 ] = {0};
 			int ircount = 0, tcount = 0; 
 
 			//If there are any values, they need to be inserted into Lua env
@@ -580,7 +586,9 @@ return 0;
 			}
 
 			//Open the file that will execute the model
-			if ( !lua_exec_file( L, f, err, sizeof( err ) ) ) {
+			snprintf( mpath, sizeof( mpath ), "%s/%s", conn->hconfig->dir, f );
+			if ( !lua_exec_file( L, mpath, err, sizeof( err ) ) ) {
+				//Need to free everything...
 				return http_error( res, 500, "%s", err );
 			}
 
@@ -639,7 +647,6 @@ return 0;
 	}
 #endif
 
-#if 1
 	//Lock the model for hashing's sake
 	lt_lock( zmodel );
 
@@ -648,13 +655,15 @@ return 0;
 		const char *f = (*v)->file;
 		if ( *f == 'v' ) {
 			int len = 0, renlen = 0;
+			char vpath[ 2048 ] = {0};
 			unsigned char *src, *render;
 			zRender * rz = zrender_init();
 			zrender_set_default_dialect( rz );
 			zrender_set_fetchdata( rz, zmodel );
 
-			if ( !( src = read_file( f, &len, err, sizeof( err ) )	) || !len ) {
-				return http_error( res, 500, "%s", err );
+			snprintf( vpath, sizeof( vpath ), "%s/%s", conn->hconfig->dir, f );
+			if ( !( src = read_file( vpath, &len, err, sizeof( err ) )	) || !len ) {
+				return http_error( res, 500, "rf: %s", err );
 			}
 
 			if ( !( render = zrender_render( rz, src, strlen((char *)src), &renlen ) ) ) {
@@ -677,16 +686,16 @@ return 0;
 	res->clen = clen;
 	http_set_status( res, 200 ); 
 	http_set_ctype( res, "text/html" );
-	http_copy_content( res, content, clen ); 
+	http_set_content( res, content, clen ); 
 
 	//Return the finished message if we got this far
 	if ( !http_finalize_response( res, err, sizeof(err) ) ) {
 		return http_error( res, 500, err );
 	}
-#endif
 
 	//Destroy full model
 	lt_free( zmodel );
+	//free( content );
 
 	//Destroy Lua
 	lua_close( L );

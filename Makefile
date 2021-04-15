@@ -35,8 +35,9 @@ example:
 # debug - turn debugging on
 debug: CFLAGS += $(DFLAGS)
 debug: SFLAGS += $(DFLAGS)
-debug: $(TARGET) 
-	@printf '' > /dev/null
+debug: $(OBJ) 
+	-@test ! -d lib && mkdir lib/
+	$(CC) $(SFLAGS) -shared -llua -lsqlite3 -o lib/lib$(NAME).so $(OBJ)
 
 
 # clean - remove all objects

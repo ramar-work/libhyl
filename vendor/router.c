@@ -108,7 +108,14 @@ static struct urimap * build_urimap ( struct urimap *map, const char *uri ) {
 	struct element **list = NULL;
 	int listlen = 0;
 
-	//
+	//TODO: add a condition to return if '/' is the only character
+	#if 1
+	if ( *uri == '/' && strlen( uri ) == 1 ) {
+		map->name = "/", map->listlen = 0, map->list = NULL;	
+		return map;
+	}
+	#endif
+
 	while ( strwalk( &r, uri, "/" ) ) {
 		unsigned char *p = (unsigned char *)&uri[ r.pos ];
 		struct element *e = NULL;
