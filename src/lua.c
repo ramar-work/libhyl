@@ -450,28 +450,79 @@ static lua_State * lua_load_libs( lua_State **L ) {
 #endif
 
 
+//Checking for static paths is important, also need to check for disallowed paths
+int path_is_static ( zTable *t, const char *uri ) {
+	int i, size, ulen = strlen( uri );
+	if ( ( i = lt_geti( t, "static" ) ) == -1 ) {
+		return 0;
+	}
+	
+	//Start at the pulled index, count x times, and reset?
+	for ( int len, ii = 1, size = lt_counta( t, i ); ii < size; ii++ ) {
+		zKeyval *kv = lt_retkv( t, i + ii );
+		//pbuf[ ii - 1 ] = kv->value.v.vchar;
+		len = strlen( kv->value.v.vchar );
+
+		//I think I can just calculate the current path
+		if ( len <= ulen && memcmp( kv->value.v.vchar, uri, len ) == 0 ) {
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
+
+
+//Send a static file
+static const int send_static ( struct HTTPBody *res, const char *dir, const char *uri ) {
+	//Read_file and return that...
+	struct stat sb;
+	int dlen = 0;
+	char err[ 2048 ] = { 0 }, spath[ 2048 ] = { 0 };
+	unsigned char *data;
+	const struct mime_t *mime;
+	memset( spath, 0, sizeof( spath ) );
+	snprintf( spath, sizeof( spath ) - 1, "%s/%s", dir, ++uri );
+	fprintf( stderr, "dir: %s\n", spath );	
+
+	//check if the path is there at all (read-file can't do this)
+	if ( stat( spath, &sb ) == -1 ) {
+		return http_error( res, 404, "static read failed: %s", err );
+	}
+	//read_file and send back
+	if ( !( data = read_file( spath, &dlen, err, sizeof( err ) ) ) ) {
+		return http_error( res, 500, "static read failed: %s", err );
+	}
+
+	//Gotta get the mimetype too	
+	if ( !( mime = zmime_get_by_filename( spath ) ) ) {
+		mime = zmime_get_default();
+	}
+
+	//Send the message out
+	res->clen = dlen;
+	http_set_status( res, 200 ); 
+	http_set_ctype( res, "text/html" );
+	http_set_content( res, data, dlen );
+	if ( !http_finalize_response( res, err, sizeof(err) ) ) {
+		return http_error( res, 500, err );
+	}
+
+	return 1;	
+}
+
+
 
 //The entry point for a Lua application
 const int filter 
 ( int fd, struct HTTPBody *req, struct HTTPBody *res, struct cdata *conn ) {
-#if 0
-	//Test responses quickly
-	char er[2048] = {0};
-	char msg[2048] = {0};
-	snprintf( msg, sizeof(msg), "Yo, its Lua: %p", conn );
-	http_set_status( res, 200 ); 
-	http_set_ctype( res, "text/html" );
-	http_copy_content( res, msg, strlen( msg ) ); 
-	if ( !http_finalize_response( res, er, sizeof(er) ) ) {
-		return http_error( res, 500, er );
-	}
-#endif
 
 	//Define variables and error positions...
 	zTable zc, zm = {0};
+	char err[ 128 ] = {0}, cpath[ 2048 ] = {0}; 
+	const char *db, *fqdn, *title, *root;
 	zTable *zconfig = &zc, *zmodel = &zm, *zroutes = NULL, *croute = NULL;
-	char err[ 128 ] = {0}, cpath[ 2048 ] = {0};
-	const char *db, *fqdn, *title, *spath, *root;
 	lua_State *L = NULL;
 	int clen = 0;
 	unsigned char *content = NULL;
@@ -519,6 +570,14 @@ const int filter
 	lua_pop( L, 1 );
 #endif
 
+	//Need to delegate to static handler when request points to one of the static paths
+	if ( path_is_static( zconfig, req->path ) ) {
+		//Usually would not free this early, but we will this time.
+		lt_free( zconfig );
+		lua_close( L );
+		return send_static( res, conn->hconfig->dir, req->path );
+	}
+	
 	//Get the rotues from the config file.
 	if ( !( zroutes = lt_copy_by_key( zconfig, rkey ) ) ) {
 		lt_free( zconfig );

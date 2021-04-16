@@ -4,6 +4,7 @@
 #include <zhttp.h>
 #include <ztable.h>
 #include <zrender.h>
+#include <zmime.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include <stdarg.h>
