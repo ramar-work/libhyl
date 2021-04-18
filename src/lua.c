@@ -12,6 +12,19 @@ static const char mkey[] = "model";
 
 static const char rkey[] = "routes";
 
+//TODO: This is an incredibly difficult way to make things read only
+const char read_only_block[] = " \
+	function make_read_only( t ) \
+		local tt = {} \
+		local mt = { \
+			__index = t	 \
+		,	__newindex = function (t,k,v) error( 'something went wrong', 1 ) end \
+		}	\
+		setmetatable( tt, mt ) \
+		return tt \
+	end \
+";
+
 static struct mvcmeta_t { 
 	const char *dir; 
 	const char *reserved; 
@@ -41,6 +54,37 @@ struct mvc_t {
 };
 
 
+int run_lua_buffer( lua_State *L, const char *buffer ) {
+	//Load a buffer	
+	luaL_loadbuffer( L, buffer, strlen( buffer ), "make-read-only-function" );
+	if ( lua_pcall( L, 0, LUA_MULTRET, 0 ) != LUA_OK ) {
+		fprintf( stdout, "lua string exec failed: %s", (char *)lua_tostring( L, -1 ) );
+		//This shouldn't fail, but if it does you should stop...
+		return 0;
+	}
+	return 1;
+}
+
+
+//In lieu of a C-only way to make members read only, use this
+int make_read_only ( lua_State *L, const char *table ) {
+	//Certain tables (and their children) need to be read-only
+	int err = 0;
+	const char fmt[] = "%s = make_read_only( %s )";
+	char execbuf[ 256 ] = { 0 };
+	snprintf( execbuf, sizeof( execbuf ), fmt, table, table );
+
+	//Load a buffer	
+	luaL_loadbuffer( L, execbuf, strlen( execbuf ), "make-read-only" );
+	if ( ( err = lua_pcall( L, 0, LUA_MULTRET, 0 ) ) != LUA_OK ) {
+		fprintf( stdout, "lua string exec failed: %s", (char *)lua_tostring( L, -1 ) );
+		//This shouldn't fail, but if it does you should stop...
+		return 0;
+	}
+	return 1;
+}
+
+
 //Should return an error b/c there are some situations where this does not work.
 int lua_loadlibs( lua_State *L, struct lua_fset *set, int standard ) {
 	//Load the standard libraries
@@ -58,6 +102,11 @@ int lua_loadlibs( lua_State *L, struct lua_fset *set, int standard ) {
 			lua_settable( L, 1 );
 		}
 		lua_setglobal( L, set->namespace );
+	}
+
+	//And finally, add some functions that we'll need later (if this fails, meh)
+	if ( !run_lua_buffer( L, read_only_block ) ) {
+		return 0;
 	}
 	return 1;
 }
@@ -226,7 +275,7 @@ int lua_exec_file( lua_State *L, const char *f, char *err, int errlen ) {
 		if ( lerr == LUA_ERRRUN ) 
 			len = snprintf( err, errlen, "Runtime error when executing %s: ", f );
 		else if ( lerr == LUA_ERRMEM ) 
-			len = snprintf( err, errlen, "zWalkerory allocation error at %s: ", f );
+			len = snprintf( err, errlen, "Memory allocation error at %s: ", f );
 		else if ( lerr == LUA_ERRERR ) 
 			len = snprintf( err, errlen, "Error while running message handler for %s: ", f );
 	#ifdef LUA_53
@@ -513,16 +562,65 @@ static const int send_static ( struct HTTPBody *res, const char *dir, const char
 }
 
 
+//...
+void dump_records( struct HTTPRecord **r ) {
+	for ( struct HTTPRecord **a = r; a && *a; a++ ) {
+		fprintf( stderr, "%p: %s -> ", *a, (*a)->field ); 
+		write( 2, (*a)->value, (*a)->size );
+		write( 2, "\n", 1 );
+	}
+}
+
+
+//Go through all of the different fields and pass things off
+zTable * prepare_http_fields ( zTable *t, struct HTTPBody *req, char *err, int errlen ) {
+	//Loop through all things
+	const char *str[] = { "headers", "url", "body" };
+	struct HTTPRecord **ii[] = { req->headers, req->url, req->body };
+
+	//Initialize said table
+	if ( !lt_init( t, NULL, 512 ) ) {
+		return NULL;
+	} 
+
+	for ( int i = 0; i < 3; i++ ) {
+		lt_addtextkey( t, str[ i ] );
+		lt_descend( t );
+		for ( struct HTTPRecord **r = ii[i]; r && *r; r++ ) {
+		#if 0
+			fprintf( stderr, "\t%p: %s -> ", *r, (*r)->field ); 
+			write( 2, (*r)->value, (*r)->size );
+			write( 2, "\n", 1 );
+		#endif
+			lt_addtextkey( t, (*r)->field );
+			lt_addblobvalue( t, (*r)->value, (*r)->size );
+			lt_finalize( t );
+		}
+		lt_ascend( t );
+	}
+
+	//Finally add a function (that should translate to Lua)
+	lt_addtextkey( t, "__newindex" );
+	lt_addtextvalue( t, "function (t,k,v) error( 'attempt to update a read-only table.', 2 ) end" );
+	//If not, you'll have to use a function, but how would that translate?
+	//would it be a C function or not?
+
+	//Return a table
+	return t;
+}
+
+
 
 //The entry point for a Lua application
 const int filter 
 ( int fd, struct HTTPBody *req, struct HTTPBody *res, struct cdata *conn ) {
 
 	//Define variables and error positions...
-	zTable zc, zm = {0};
+	zTable zc, zm = {0}, zh = {0};
 	char err[ 128 ] = {0}, cpath[ 2048 ] = {0}; 
 	const char *db, *fqdn, *title, *root;
-	zTable *zconfig = &zc, *zmodel = &zm, *zroutes = NULL, *croute = NULL;
+	zTable *zconfig = &zc, *zmodel = &zm, *zhttp = &zh; 
+	zTable *zroutes = NULL, *croute = NULL;
 	lua_State *L = NULL;
 	int clen = 0;
 	unsigned char *content = NULL;
@@ -616,13 +714,21 @@ const int filter
 	free( zroutes );
 	lt_free( zconfig );
 
-#if 1
-	//...
-	lua_loadlibs( L, functions, 1 );
+	//Parse http here
+	if ( !prepare_http_fields( zhttp, req, err, sizeof( err ) ) ) {
+		return http_error( res, 500, "Failed to prepare HTTP for consumption." ); 
+	}
 
-	//Open our extra libraries too (if requested via config file...)
-	//load_lua_libs( L );
+	//Load standard libraries
+	if ( !lua_loadlibs( L, functions, 1 ) ) {
+		return http_error( res, 500, "Failed to initialize Lua standard libs." ); 
+	}
 
+	//Make read only (probably shouldn't be fatal)
+	if ( !make_read_only( L, "http" ) ) {
+		return http_error( res, 500, "Failed to make libs read-only." ); 
+	}
+	
 	//Execute each model
 	for ( struct imvc_t **m = pp.imvc_tlist; *m; m++ ) {
 		const char *f = (*m)->file;
@@ -704,7 +810,6 @@ const int filter
 			lua_pop( L, tcount );
 		}
 	}
-#endif
 
 	//Lock the model for hashing's sake
 	lt_lock( zmodel );
@@ -751,6 +856,9 @@ const int filter
 	if ( !http_finalize_response( res, err, sizeof(err) ) ) {
 		return http_error( res, 500, err );
 	}
+
+	//Destroy HTTP
+	lt_free( zhttp );
 
 	//Destroy full model
 	lt_free( zmodel );
