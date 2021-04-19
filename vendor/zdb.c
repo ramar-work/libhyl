@@ -48,6 +48,8 @@
  #include <mysql/mysql.h>
 #endif
 
+#define AT_EOS(a) ( (a)->len == -1 && *(a)->field == eos )
+
 enum zdb_error {
 	ZDB_ERROR_NONE
 , ZDB_ERROR_GENERIC
@@ -69,7 +71,9 @@ enum zdb_error {
 , ZDB_ERROR_STMTRESULT
 };
 
-static const char endset[] = "__END__";
+static const char eos = 127;
+
+static const char endset[] = { eos }; 
 
 static const char *zdb_errors[] = {
 	[ 0 ] = "No error." 
@@ -343,15 +347,14 @@ zdbconn_t * zdb_init_conn ( zdbconn_t *conn, const char *connstr, char *err, int
 }
 
 
-
 #ifdef ZTABLE_H
 zTable * zdb_to_ztable ( zdb_t *zdb, const char *key ) {
 	zTable *t = NULL;
 	const int mod = 4056;
-	int row = 0;
+	int next = 0, row = 0;
 
 	//TODO: mod needs to be based on the result count
-	if ( !( t = malloc( sizeof( zTable ) ) ) ) {
+	if ( !( t = malloc( sizeof( zTable ) ) ) || !memset( t, 0, sizeof( zTable ) ) ) {
 		return NULL;
 	}
 
@@ -364,19 +367,21 @@ zTable * zdb_to_ztable ( zdb_t *zdb, const char *key ) {
 	lt_descend( t );
 
 	//Loop through and save each value 
-	for ( zdbv_t **set = zdb->results; set && *set; row++ ) {
-		if ( !row ) {	
-			lt_addintkey( t, row );
+	for ( zdbv_t **set = zdb->results; set && *set; set++ ) {
+		if ( !next ) {
+			lt_addintkey( t, row++ );
 			lt_descend( t );
+			next = 1;
 		}
 
-		//TODO: Probably not a super big perf hit, but highly consider *set->field == '*' or something...
-		if ( !strcmp( endset, (*set)->field ) ) {
+		//TODO: either method works, but not sure how often I'm doing this yet...
+		//if ( (*set)->len == -1 && *(*set)->field == eos ) { 
+		if ( AT_EOS( *set ) ) {
 			lt_ascend( t );
-			row = 0;
+			next = 0;
 			continue;	
 		}
-	
+
 		lt_addtextkey( t, (*set)->field );
 		( !(*set)->len ) ? lt_addtextvalue( t, "" ) : lt_addblobdvalue( t, (*set)->value, (*set)->len );
 		lt_finalize( t );
@@ -467,33 +472,27 @@ void *zdb_sqlite_exec( zdb_t *zdb, const char *query, zdbv_t **records ) {
 			return NULL;
 		} 
 
-		for ( int i=0, len; i < sqlite3_data_count( stmt ); i++ ) {
+		for ( int i=0, dc = sqlite3_data_count( stmt ), len; i <= dc; i++ ) {
 			//Create a new thing
 			zdbv_t *val = malloc( sizeof( zdbv_t ) );
 			memset( val, 0, sizeof( zdbv_t ) );
-
-			//Set values
-			val->field = zdb->headers[ i ];
-			val->len = sqlite3_column_bytes( stmt, i );	
-			val->value = malloc( val->len );
-			memset( val->value, 0, val->len );
-			memcpy( val->value, sqlite3_column_blob( stmt, i ), val->len );
-		
+	
+			if ( i == dc )
+				val->field = endset, val->len = -1, val->value = NULL;
+			else {
+				//Set values
+				val->field = zdb->headers[ i ];
+				val->len = sqlite3_column_bytes( stmt, i );	
+				val->value = malloc( val->len );
+				memset( val->value, 0, val->len );
+				memcpy( val->value, sqlite3_column_blob( stmt, i ), val->len );
+			}
+			
 			if ( !zdbv_add_item( &zdb->results, val, zdbv_t *, &size ) ) {
 				zdb->error= ZDB_ERROR_ALLOC;
 				sqlite3_finalize( stmt );
 				return NULL;
 			}
-		}
-
-		//Terminate the row...
-		zdbv_t *val = malloc( sizeof( zdbv_t ) );
-		memset( val, 0, sizeof( zdbv_t ) );
-		val->field = endset;
-		if ( !zdbv_add_item( &zdb->results, val, zdbv_t *, &size ) ) {
-			zdb->error= ZDB_ERROR_ALLOC;
-			sqlite3_finalize( stmt );
-			return NULL;
 		}
 	}
 

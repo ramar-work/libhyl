@@ -40,6 +40,9 @@
  * ------------------------------------------- */
 #include <strings.h>
 #include <zwalker.h>
+//TODO: When this is all put together in one library, it should be easier...
+#include <ztable.h>
+
 
 #ifndef HDATABASE_H
 #define HDATABASE_H
@@ -183,5 +186,8 @@ void *zdb_mysql_exec( zdb_t *, const char *, zdbv_t ** );
 
 #define db_query_str( ptr, str )
 
+#ifdef ZTABLE_H
+zTable * zdb_to_ztable ( zdb_t *, const char * );
+#endif
 
 #endif
