@@ -552,7 +552,7 @@ static const int send_static ( struct HTTPBody *res, const char *dir, const char
 	//Send the message out
 	res->clen = dlen;
 	http_set_status( res, 200 ); 
-	http_set_ctype( res, "text/html" );
+	http_set_ctype( res, mime->mimetype );
 	http_set_content( res, data, dlen );
 	if ( !http_finalize_response( res, err, sizeof(err) ) ) {
 		return http_error( res, 500, err );
