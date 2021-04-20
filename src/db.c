@@ -1,26 +1,16 @@
 #include "db.h"
 
+//Accepts three arguments { db, [query,file], bind_args }
 int db_exec ( lua_State *L ) {
 	//Check for arguments...
-	const int arg = 1;
-	luaL_checktype( L, arg, LUA_TTABLE );
+	luaL_checktype( L, 1, LUA_TTABLE );
 
 	//Within this table need to exist a few keys
-	//"bindargs" - for bind arguments, 
-	//"query", "file" - for SQL code evaluation
-lua_stackdump( L );
 #if 1
-	zTable *t = malloc( sizeof( zTable ) );
-	lt_init( t, NULL, 128 ); 
+	zTable *results, *t = malloc( sizeof( zTable ) );
+	lt_init( t, NULL, 32 ); 
 #else
-	//Doing this statically will save some energy
-	zTable t, *tt;
-	lt_init( &t, zKeyval * 128, 128 );
-	//Last step is differentiating between copies and references
-	//dchar = dynamically allocated char
-	//schar = statically allocated char
-	//Or
-	//lt_copytextkey / lt_settextkey
+	//Doing this statically will save time, energy and memory 
 #endif
 
 	//Convert to C table for slightly easier key extraction	
@@ -31,8 +21,7 @@ lua_stackdump( L );
 	}
 
 	//Check for needed args, starting with dbname (or conn str, whatever)
-	const char *query = NULL;
-	const char *conn  = NULL;
+	const char *conn  = NULL, *query = NULL;
 	int pos;
 	if ( ( pos = lt_geti( t, "db" ) ) > -1 ) 
 		conn = lt_text_at( t, pos );
@@ -55,7 +44,7 @@ lua_stackdump( L );
 	}
 
 	//Finally, handle bind args if there are any
-fprintf( stdout, "%s\n", query ); fflush( stdout );
+	//...
 
 	//Then we have to initialize the underlying lib
 	zdb_t zdb = { 0 }; 
@@ -70,16 +59,35 @@ fprintf( stdout, "%s\n", query ); fflush( stdout );
 		return luaL_error( L, "SQL execution error: %s", zdb.err );
 	}
 
-	zTable *r;
-	if ( !( r = zdb_to_ztable( &zdb, "results" ) ) ) {
+	if ( !( results = zdb_to_ztable( &zdb, "results" ) ) ) {
 		fprintf( stdout, "failed....\n" ); fflush( stdout );
 		return luaL_error( L, "conversion error: %s", zdb.err );
 	}
 
-	lt_dump( r );	
+	//Everything should be done by this point, so we have to prepare the results
+	lua_pop( L, 1 );	
 
+	//It's infinitely easier to write this first...
+	if ( !ztable_to_lua( L, results ) ) {
+		zdb_close( &zdb );
+		lt_free( results );
+		return luaL_error( L, "ztable to Lua failed...\n" );
+	}
+
+	//Add a status code
+	lua_pushstring( L, "status" );
+	lua_pushboolean( L, 1 );
+	lua_settable( L, 1 );
+
+	//Add a status code
+	lua_pushstring( L, "count" );
+	lua_pushnumber( L, zdb.rows );
+	lua_settable( L, 1 );
+
+	lua_stackdump( L );
 	zdb_close( &zdb );	
-	return 0;
+	lt_free( results );
+	return 1;
 }
 
 struct luaL_Reg db_set[] = {

@@ -65,7 +65,6 @@ then
 fi
 
 
-# ...
 if [ -z "$FULLPATH" ]
 then
 	FULLPATH=$DOMAIN

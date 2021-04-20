@@ -1,0 +1,7 @@
+# Add nothing under private or tmp
+private/
+tmp/
+
+# Add no binary assets
+assets/bin
+assets/img
