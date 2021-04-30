@@ -67,20 +67,18 @@
 #include "zrender.h"
 
 //Write full path to a node
-static char * lookup_xmap ( struct xmap *xp ) {
+static char * lookup_xmap ( struct xmap *xp, char *xb, int xblen ) {
 	struct xdesc *tp = xp->parent;	
 	int px = 0, len = 0;
 	struct parent { int l, i; char *c; } parents[ 64 ] = { 0 };
 
 	//Really should check this...
-	char *e, *d = malloc( 1024 );
-	memset( d, 0, 1024 );
-	e = d;
+	char e[xblen];
+	char *d = memset(e, 0, xblen);
+	//e = d;
 
 	//Move backwards among parents until we reach the top
-fprintf( stderr, "PX: %p\n", tp->pxmap );
 	while ( tp->pxmap ) {
-fprintf( stderr, "PX: %d\n", px );
 		struct parent *x = &parents[ px ];
 		x->c = (char *)(tp->pxmap)->ptr, x->l = (tp->pxmap)->len, x->i = tp->index, px++;
 		tp = (tp->pxmap)->parent;
@@ -97,8 +95,11 @@ fprintf( stderr, "PX: %d\n", px );
 	//Add the last key
 	memcpy( d, xp->ptr, xp->len ) ? d += xp->len, len += xp->len : 0; 
 
+	//TODO: This is an extra step
+	memcpy( xb, e, len ); 
+
 	//Write the whole thing
-	return e;
+	return xb;
 }
 
 
@@ -151,6 +152,8 @@ static struct xmap * init_xmap() {
 	struct xmap * p = malloc ( sizeof( struct xmap ) );
 	return ( !p ) ? NULL : memset( p, 0, sizeof( struct xmap ) ); 
 }
+
+//Clone xmap?
 
 
 //Destroy the premap
@@ -327,130 +330,90 @@ int zrender_convert_marks( zRender *rz ) {
 	struct premap **pmap = rz->premap;
 	struct xmap **xmap = NULL;
 	struct xdesc xdarray[32], *xdptr = memset( xdarray, 0, sizeof( struct xdesc ) * 32 );
-	int xmaplen = 0;
-	int render = 1;
 	const struct xdesc *zdptr = xdptr;
 	
 	//Loop through all premaps
-//1. use render as the primary if statement here
-//2. statically allocate xmap, copying if we make it all the way through
-//3. ?
-	while ( pmap && *pmap ) {
+	for ( int nlen = 0, hash = -1, xmaplen = 0, render = 1; pmap && *pmap; ) {
 		struct xmap *xp = init_xmap();
 		struct premap *pp = *pmap;
+		unsigned char *t = NULL;
+		char xb[ 1024 ] = { 0 };
 		xp->parent = NULL;
-		xp->stat = render;
 
-		//Check render and map->type (LE)
-		//if ( render || 
-		
 		//Raw write first
-		if ( *pp->ptr != '{' )
+		if ( *pp->ptr != '{' && render ) {
 			xp->type = RW, xp->len = pp->len, xp->ptr = pp->ptr, pmap++;
-		else {
-			int nlen = 0, hash = -1;
-			unsigned char *t = zr_trim( pp->ptr, "{} ", pp->len, &nlen );
-	
-			//LOOP START	
-			if ( ( xp->type = rz->xmapset[ *t ] ) == LS ) {
-				//These are set so that we'll know which ref to look at
-				//This also needs only be done ONE time (the first time it's encountered)
-				xp->ptr = zr_trim( t, "# ", nlen, &nlen );
-				xp->len = nlen; 
-				xp->parent = xdptr;
-
-				if ( *xp->ptr != '.' )
-					hash = lt_get_long_i( rz->userdata, xp->ptr, xp->len );
-				else {
-					char *lookup = lookup_xmap( xp );
-					hash = lt_geti( rz->userdata, lookup );
-					free( lookup ); //rebuillding each time is going to get repetitive
-				}
-#if 0
-fprintf( stderr, "PARENT at first LS: %p, '", xp->parent );
-write( 2, xp->ptr, xp->len ); 
-write( 2, "'\n", 2 ); 
-#endif
-				if ( hash == -1 ) 
-					xp->stat = render = 0;
-				else {
-					//get the data at that point
-					xdptr++;
-					xdptr->children = lt_counti( rz->userdata, hash );
-					//xdptr->index = !xdptr->index ? 0 : xdptr->index; 
-					xdptr->pxmap = xp;
-					xdptr->cxmap = pmap;
-#if 0
-fprintf( stderr, "LOOPSTART: pmap: %p, %p\n", pmap, xdptr->cxmap ); 
-fprintf( stderr, "LOOPSTART: children: %d, index: %d\n", xdptr->children, xdptr->index ); 
-#endif
-				}
-				pmap++;
-			}
-			//LOOP END
-			else if ( xp->type == LE ) {
-				xp->len = 0, xp->ptr = NULL, xp->parent = xdptr, xdptr->index++;
-#if 0
-fprintf( stderr, "LOOPEND(1): pmap: %p, %p\n", pmap, xdptr->cxmap ); 
-#endif
-				if ( xdptr->index < xdptr->children ) 
-					pmap = xdptr->cxmap;
-				else {
-					xdptr->index = 0;
-					pmap++;
-				}
-#if 0
-fprintf( stderr, "LOOPEND(2): pmap: %p, %p\n", pmap, xdptr->cxmap );
-#endif
-				//TODO: This needs a proper fix.  All this does is cure the symptom...
-				if ( xdptr != zdptr ) {	
-					xdptr--;
-				}
-				xp->stat = render = 1;
-			}
-			else if ( xp->type == SX ) {
-				xp->len = nlen, xp->ptr = t;
-
-				if ( ( hash = lt_get_long_i( rz->userdata, xp->ptr, xp->len ) ) == -1 ) 
-					xp->len = 0, xp->ptr = NULL;
-				else {
-					extract_value( rz, hash, xp );
-				}
-				pmap++;
-			}
-			else if ( xp->type == CX ) {
-				//if we're not in a loop, you should stop
-				xp->len = nlen, xp->ptr = t, xp->parent = xdptr;
-
-fprintf( stderr, "LOOKUP: %p, ", xp );
-fprintf( stderr, "LOOKUP->parent: %p, ", xp->parent );
-				//find the full lookup string
-				char *lookup = lookup_xmap( xp );
-				hash = lt_geti( rz->userdata, lookup );
-#if 0
-fprintf( stderr, "CX LOOKUP: %s (%d)\n", lookup, hash );
-#endif
-				//then get the hash
-				if ( hash == -1 ) 
-					xp->len = 0, xp->ptr = NULL;
-				else {
-					extract_value( rz, hash, xp );
-					xp->parent = xdptr;
-				}
-
-				//Free and move pointer up
-				free( lookup );
-				pmap++;
-			}
-#if 0
-			else if ( xp->type == BL )
-			else if ( xp->type == EK )
-			else if ( xp->type == EK )
-#endif
-			else {
-				xp->len = 1, xp->ptr = t, xp->parent = NULL, pmap++;
-			}
+			zr_add_item( &xmap, xp, struct xmap *, &xmaplen );
+			continue;
 		}
+
+		//Get the "magic" character
+		t = zr_trim( pp->ptr, "{} ", pp->len, &nlen );
+		xp->type = rz->xmapset[ *t ];
+
+		if ( xp->type == LE ) {
+			xp->len = 0, xp->ptr = NULL, xp->parent = xdptr, xdptr->index++;
+			if ( xdptr->index < xdptr->children ) 
+				pmap = xdptr->cxmap;
+			else {
+				xdptr->index = 0;
+				pmap++;
+			}
+			//TODO: This needs a proper fix.  All this does is cure the symptom...
+			if ( xdptr != zdptr ) {	
+				xdptr--;
+			}
+			render = 1;
+		}
+		else if ( xp->type == LS ) {
+			xp->ptr = zr_trim( t, "# ", nlen, &nlen ), xp->parent = xdptr, xp->len = nlen; 
+
+			if ( *xp->ptr != '.' )
+				hash = lt_get_long_i( rz->userdata, xp->ptr, xp->len );
+			else {
+				hash = lt_geti( rz->userdata, lookup_xmap( xp, xb, sizeof( xb ) ) );
+			}
+
+			if ( hash == -1 ) 
+				render = 0;
+			else {
+				//get the data at that point
+				xdptr++;
+				xdptr->children = lt_counti( rz->userdata, hash );
+				//xdptr->index = !xdptr->index ? 0 : xdptr->index; 
+				xdptr->pxmap = xp;
+				xdptr->cxmap = pmap;
+			}
+			pmap++;
+		}
+		else if ( xp->type == SX ) {
+			xp->len = nlen, xp->ptr = t;
+			if ( ( hash = lt_get_long_i( rz->userdata, xp->ptr, xp->len ) ) == -1 ) 
+				xp->len = 0, xp->ptr = NULL;
+			else {
+				extract_value( rz, hash, xp );
+			}
+			pmap++;
+		}
+		else if ( xp->type == CX ) {
+			xp->len = nlen, xp->ptr = t, xp->parent = xdptr;
+			if ( ( hash = lt_geti( rz->userdata, lookup_xmap( xp, xb, sizeof( xb ) ) ) ) == -1 )
+				xp->len = 0, xp->ptr = NULL;
+			else {
+				extract_value( rz, hash, xp );
+				xp->parent = xdptr;
+			}
+			pmap++;
+		}
+#if 0
+		else if ( xp->type == BL )
+		else if ( xp->type == EK )
+		else if ( xp->type == EK )
+#endif
+		else {
+			xp->len = 1, xp->ptr = t, xp->parent = NULL, pmap++;
+		}
+		
 		zr_add_item( &xmap, xp, struct xmap *, &xmaplen );
 	}
 
