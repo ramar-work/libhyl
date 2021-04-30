@@ -154,6 +154,18 @@ static struct xmap * init_xmap() {
 }
 
 //Clone xmap?
+static struct xmap * clone_xmap( struct xmap *x ) {
+	struct xmap * p = malloc ( sizeof( struct xmap ) );
+	if ( !p ) {
+		return NULL; 
+	}
+	memset( p, 0, sizeof( struct xmap ) ); 
+	p->ptr = x->ptr;
+	p->parent = x->parent;
+	p->len = x->len;
+	p->type = x->type;
+	return p;
+}
 
 
 //Destroy the premap
@@ -341,9 +353,14 @@ int zrender_convert_marks( zRender *rz ) {
 		xp->parent = NULL;
 
 		//Raw write first
-		if ( *pp->ptr != '{' && render ) {
-			xp->type = RW, xp->len = pp->len, xp->ptr = pp->ptr, pmap++;
-			zr_add_item( &xmap, xp, struct xmap *, &xmaplen );
+		if ( *pp->ptr != '{' ) {
+			if ( !render ) 
+				free( xp );
+			else {
+				xp->type = RW, xp->len = pp->len, xp->ptr = pp->ptr; 
+				zr_add_item( &xmap, xp, struct xmap *, &xmaplen );
+			}
+			pmap++;
 			continue;
 		}
 
