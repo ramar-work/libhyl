@@ -80,9 +80,11 @@ struct xdesc {
 
 struct xmap {
 	unsigned char *ptr;
-	short len;
-	short type;
 	struct xdesc *parent;
+	char len;
+	char type;
+  char stat; //for loops, if there is nothing it shouldn't render
+	char pad; //to make an even boundary (though the compiler should do this)
 };
 
 typedef struct zRender {

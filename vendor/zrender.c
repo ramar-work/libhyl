@@ -78,7 +78,9 @@ static char * lookup_xmap ( struct xmap *xp ) {
 	e = d;
 
 	//Move backwards among parents until we reach the top
+fprintf( stderr, "PX: %p\n", tp->pxmap );
 	while ( tp->pxmap ) {
+fprintf( stderr, "PX: %d\n", px );
 		struct parent *x = &parents[ px ];
 		x->c = (char *)(tp->pxmap)->ptr, x->l = (tp->pxmap)->len, x->i = tp->index, px++;
 		tp = (tp->pxmap)->parent;
@@ -326,12 +328,21 @@ int zrender_convert_marks( zRender *rz ) {
 	struct xmap **xmap = NULL;
 	struct xdesc xdarray[32], *xdptr = memset( xdarray, 0, sizeof( struct xdesc ) * 32 );
 	int xmaplen = 0;
-
+	int render = 1;
+	const struct xdesc *zdptr = xdptr;
+	
 	//Loop through all premaps
+//1. use render as the primary if statement here
+//2. statically allocate xmap, copying if we make it all the way through
+//3. ?
 	while ( pmap && *pmap ) {
 		struct xmap *xp = init_xmap();
 		struct premap *pp = *pmap;
 		xp->parent = NULL;
+		xp->stat = render;
+
+		//Check render and map->type (LE)
+		//if ( render || 
 		
 		//Raw write first
 		if ( *pp->ptr != '{' )
@@ -347,6 +358,7 @@ int zrender_convert_marks( zRender *rz ) {
 				xp->ptr = zr_trim( t, "# ", nlen, &nlen );
 				xp->len = nlen; 
 				xp->parent = xdptr;
+
 				if ( *xp->ptr != '.' )
 					hash = lt_get_long_i( rz->userdata, xp->ptr, xp->len );
 				else {
@@ -359,7 +371,9 @@ fprintf( stderr, "PARENT at first LS: %p, '", xp->parent );
 write( 2, xp->ptr, xp->len ); 
 write( 2, "'\n", 2 ); 
 #endif
-				if ( hash != -1 ) {
+				if ( hash == -1 ) 
+					xp->stat = render = 0;
+				else {
 					//get the data at that point
 					xdptr++;
 					xdptr->children = lt_counti( rz->userdata, hash );
@@ -388,10 +402,15 @@ fprintf( stderr, "LOOPEND(1): pmap: %p, %p\n", pmap, xdptr->cxmap );
 #if 0
 fprintf( stderr, "LOOPEND(2): pmap: %p, %p\n", pmap, xdptr->cxmap );
 #endif
-				xdptr--;
+				//TODO: This needs a proper fix.  All this does is cure the symptom...
+				if ( xdptr != zdptr ) {	
+					xdptr--;
+				}
+				xp->stat = render = 1;
 			}
 			else if ( xp->type == SX ) {
 				xp->len = nlen, xp->ptr = t;
+
 				if ( ( hash = lt_get_long_i( rz->userdata, xp->ptr, xp->len ) ) == -1 ) 
 					xp->len = 0, xp->ptr = NULL;
 				else {
@@ -403,6 +422,8 @@ fprintf( stderr, "LOOPEND(2): pmap: %p, %p\n", pmap, xdptr->cxmap );
 				//if we're not in a loop, you should stop
 				xp->len = nlen, xp->ptr = t, xp->parent = xdptr;
 
+fprintf( stderr, "LOOKUP: %p, ", xp );
+fprintf( stderr, "LOOKUP->parent: %p, ", xp->parent );
 				//find the full lookup string
 				char *lookup = lookup_xmap( xp );
 				hash = lt_geti( rz->userdata, lookup );
@@ -487,6 +508,8 @@ unsigned char * zrender_render
 		fprintf( stderr, "set_marks failed\n" ); 
 		return NULL;
 	}
+
+	print_premap( rz->premap );
 
 	if ( !zrender_convert_marks( rz ) ) {
 		fprintf( stderr, "convert_marks failed\n" ); 

@@ -826,6 +826,8 @@ const int filter
 			zrender_set_fetchdata( rz, zmodel );
 
 			snprintf( vpath, sizeof( vpath ), "%s/%s", conn->hconfig->dir, f );
+fprintf( stderr, "vp: %s\n", vpath );
+#if 1
 			if ( !( src = read_file( vpath, &len, err, sizeof( err ) )	) || !len ) {
 				return http_error( res, 500, "rf: %s", err );
 			}
@@ -836,6 +838,7 @@ const int filter
 			zhttp_append_to_uint8t( &content, &clen, render, renlen ); 
 			zrender_free( rz );
 			free( src );
+#endif
 		}
 	}
 
