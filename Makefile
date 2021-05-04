@@ -45,4 +45,9 @@ clean:
 	-find -type f -name "*.o" | xargs rm
 	-rm lib/lib$(NAME).so
 
-.PHONY: lib
+# test - do some test compile
+test: $(OBJ) 
+test:
+	$(CC) $(CFLAGS) $(DFLAGS) -llua -lsqlite3 $(OBJ) tests/stack.c -o bin/stack
+
+.PHONY: lib test

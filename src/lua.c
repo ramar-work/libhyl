@@ -119,7 +119,162 @@ int lua_getarg( ) {
 }
 
 
-#ifdef DEBUG_H
+
+void llds( lua_State *L ) {
+
+}
+
+
+void lua_dumpstack ( lua_State *L, int *sd ) {
+	//Return early if no values
+	if ( lua_gettop( L ) == 0 ) {
+		fprintf( stderr, "%s\n", "No values on stack." );
+		return;
+	}
+
+	fprintf( stderr, "lua_gettop returned: %d\n", lua_gettop( L ) );
+#if 0
+	lua_pushnumber( L, 1 );
+	lua_pushnumber( L, 2 );
+	lua_pushnumber( L, 3 );
+	lua_pushnil( L );
+	lua_pushstring( L, "jammy" );
+#endif
+	//lifo for merging/conversion, fifo for viewing
+	int top = lua_gettop( L ); 
+	struct data { short depth; short count; short index; } data[64] = {0};
+	struct data *dd = data;
+	dd->index = 1;
+
+int xx = 0;
+
+	for ( int it, index = 1, ix = 0; index <= top; ix++ ) {
+		if ( xx ) 
+			xx = 0;
+		else {	
+		fprintf( stderr, "%s", &"\t\t\t\t\t\t\t\t\t\t"[ 10 - dd->depth ] );
+		fprintf( stderr, "%d, %d -> %s ", index, ix, lua_typename( L, lua_type( L, index ) ) ); 
+		if ( ( it = lua_type( L, index ) ) == LUA_TSTRING )
+			fprintf( stderr, "(%s) %s", lua_typename( L, it ), lua_tostring( L, index ) );
+		else if ( it == LUA_TFUNCTION )
+			fprintf( stderr, "(%s) %d", lua_typename( L, it ), index );
+		else if ( it == LUA_TNUMBER )
+			fprintf( stderr, "(%s) %lld", lua_typename( L, it ), (long long)lua_tointeger( L, index ) );
+		else if ( it == LUA_TBOOLEAN)
+			fprintf( stderr, "(%s) %s", lua_typename( L, it ), lua_toboolean( L, index ) ? "T" : "F" );
+		else if ( it == LUA_TTHREAD )
+			fprintf( stderr, "(%s) %p", lua_typename( L, it ), lua_tothread( L, index ) );
+		else if ( it == LUA_TLIGHTUSERDATA || it == LUA_TUSERDATA )
+			fprintf( stderr, "(%s) %p", lua_typename( L, it ), lua_touserdata( L, index ) );
+		else if ( it == LUA_TNIL || it == LUA_TNONE )
+			fprintf( stderr, "(%s) %p", lua_typename( L, it ), lua_topointer( L, index ) );
+		else if ( it == LUA_TTABLE ) {
+			fprintf( stderr, "(%s) %p", lua_typename( L, it ), lua_topointer( L, index ) );
+		}
+		}
+		//fprintf( stderr, "i: %d , t: %d\n", index, top );
+		if ( it == LUA_TTABLE || ( dd->depth && --dd->count == 0 ) ) {
+			if ( it == LUA_TTABLE ) {
+				lua_pushnil( L );
+			}
+			if ( dd->depth && dd->count == 0 ) {
+				lua_pop( L, 1 );
+				//index -= 2; 
+				index = dd->index;
+				top -= 2;
+			}
+			//fprintf( stderr, "TABLE HIT!\n" );
+			if ( !lua_next( L, index ) ) {
+			#if 0
+				fprintf( stderr, "AT END OF TABLE at %d!\n", index ); 
+				fprintf( stderr, "LAST VALUE AT (%d) %s", 
+					lua_gettop( L ), lua_typename( L, lua_type( L, lua_gettop( L ) ) ) );
+			#endif
+				
+				dd--;
+				index = dd->index;
+				xx = 1;
+				//fprintf( stderr, "%d, %d, top: %d\n", dd->depth, dd->count, top );
+				fprintf( stderr, "\n%s}", &"\t\t\t\t\t\t\t\t\t\t"[ 10 - dd->depth ] );
+			}
+			else {
+				//fprintf( stderr, "AT START OF TABLE!\n" ); 
+				if ( it == LUA_TTABLE ) {
+					int depth = dd->depth;
+					++dd;
+					dd->depth = ++depth;
+					dd->index = index;
+				}
+				top += 2;
+				dd->count = 2;
+			}
+			fprintf( stderr, "\n" );//fprintf( stderr, ( i == -1 ) ? "\n" : " -> " );
+		}
+		index++;
+	}
+#if 0
+		if ( dd->depth && --dd->count == 0 ) {
+			fprintf( stderr, "\n" );
+			//fprintf( stderr, "iterated through both keys" );
+			lua_pop( L, 1 );
+			index -= 2; 
+			top -= 2;
+			if ( !lua_next( L, index ) ) {
+				fprintf( stderr, "AT END OF TABLE!\n" ); 
+				dd--;
+				index++;	
+			}
+			else {
+				//fprintf( stderr, "INSIDE SAME TABLE!\n" ); 
+				top += 2;
+				dd->count = 2;
+				index++;	
+			}
+			continue;
+		}
+#endif
+
+		#if 0
+			//Add a nil value
+			lua_pushnil( L );
+			int d = ( sd ) ? *sd += 1 : 0;
+
+			//Loop using the negative index
+			while ( lua_next( L, -2 ) != 0 ) {
+				fprintf( stderr, "%s", &"\t\t\t\t\t\t\t\t\t\t"[ 10 - d ] );
+				fprintf( stderr, /*"[%3d:%2d] => "*/ "[%2d] => ", d );
+				for ( int t, i = -2; i < 0; i ++ ) {
+					if ( ( t = lua_type( L, i ) ) == LUA_TSTRING )
+						fprintf( stderr, "(%s) %s", lua_typename( L, t ), lua_tostring( L, i ) );
+					else if ( t == LUA_TFUNCTION )
+						fprintf( stderr, "(%s) %d", lua_typename( L, t ), i );
+					else if ( t == LUA_TNUMBER )
+						fprintf( stderr, "(%s) %lld", lua_typename( L, t ), (long long)lua_tointeger( L, i ) );
+					else if ( t == LUA_TBOOLEAN)
+						fprintf( stderr, "(%s) %s", lua_typename( L, t ), lua_toboolean( L, i ) ? "T" : "F" );
+					else if ( t == LUA_TTHREAD )
+						fprintf( stderr, "(%s) %p", lua_typename( L, t ), lua_tothread( L, i ) );
+					else if ( t == LUA_TLIGHTUSERDATA || t == LUA_TUSERDATA )
+						fprintf( stderr, "(%s) %p", lua_typename( L, t ), lua_touserdata( L, i ) );
+					else if ( t == LUA_TNIL || t == LUA_TNONE )
+						fprintf( stderr, "(%s) %p", lua_typename( L, t ), lua_topointer( L, i ) );
+					else if ( t == LUA_TTABLE ) {
+						fprintf( stderr, "(%s) %p\n", lua_typename( L, t ), lua_topointer( L, i ) );
+						lua_dumpstack( L, &d );
+						fprintf( stderr, "%s", &"\t\t\t\t\t\t\t\t\t\t"[ 10 - d ] );
+						fprintf( stderr, "}" );
+					}
+					fprintf( stderr, ( i == -1 ) ? "\n" : " -> " );
+				}
+				lua_pop( L, 1 );
+			}
+			( sd ) ? *sd -= 1 : 0;
+		}
+	}
+		#endif
+}
+
+
 static void lua_dumptable ( lua_State *L, int *pos, int *sd ) {
 	lua_pushnil( L );
 	//FPRINTF( "*pos = %d\n", *pos );
@@ -222,7 +377,6 @@ void lua_stackdump ( lua_State *L ) {
 	}
 	return;
 }
-#endif
 
 
 
@@ -763,100 +917,140 @@ const int filter
 	}
 	
 	//Execute each model
+	int ccount = 0, tcount = 0; 
 	for ( struct imvc_t **m = pp.imvc_tlist; *m; m++ ) {
-		const char *f = (*m)->file;
+		if ( *(*m)->file != 'a' ) {
+			continue;
+		}
+		#if 0	
+		ircount = lua_gettop( L );
 
-			#if 0	
-			ircount = lua_gettop( L );
+		//Check for model in Lua's global environment and convert that as well
+		lua_getglobal( L, mkey );
+		if ( lua_isnil( L, -1 ) ) {
+			lua_pop( L, 1 );
+		}
+		#endif
+		//Define
+		char err[ 2048 ] = { 0 }, msymname[ 1024 ] = { 0 }, mpath[ 2048 ] = {0};
+#if 0
+		//If there are any values, they need to be inserted into Lua env
+		if ( lt_countall( zmodel ) > 1 ) {
+fprintf( stderr, "==== REINSERTING MODEL\n" );
 
-			//Check for model in Lua's global environment and convert that as well
+			//If we fail to insert, this is a model error and worthy of a 500...
+			if ( !ztable_to_lua( L, zmodel ) ) {
+				return http_error( res, 500, "Error converting original model!" );
+			}
+		
+			//Make the old model global, & destroy the ref to the old model...	
+			lua_setglobal( L, mkey );
+			lt_free( zmodel );
+		}
+#endif
+
+fprintf( stderr, "==== BEGINNING OF INVOCATION\n" );
+lua_dumpstack( L, NULL );
+
+		//Open the file that will execute the model
+		snprintf( mpath, sizeof( mpath ), "%s/%s", conn->hconfig->dir, (*m)->file );
+		fprintf( stderr, "Executing model %s\n", mpath );
+
+		//...
+		if ( !lua_exec_file( L, mpath, err, sizeof( err ) ) ) {
+			return http_error( res, 500, "%s", err );
+		}
+
+		//Debug dump of whatever model is there
+fprintf( stderr, "==== NEW MODEL\n" );
+		lua_dumpstack( L, NULL );
+		//lua_stackdump( L );
+
+		//Get name of model file in question 
+		memcpy( msymname, &(*m)->file[4], strlen( (*m)->file ) - 8 );
+
+		//Get a count of the values which came from the model
+		tcount += ccount = lua_gettop( L );
+		fprintf( stderr, "executed model contains %d values\n", ccount );
+
+	#if 1
+	#if 0
+		if ( ccount ) {
 			lua_getglobal( L, mkey );
-			if ( lua_isnil( L, -1 ) ) {
-				lua_pop( L, 1 );
-			}
-			#endif
-		if ( *f == 'a' ) {
-			//Define
-			char err[ 2048 ] = { 0 }, msymname[ 1024 ] = { 0 }, mpath[ 2048 ] = {0};
-			int ircount = 0, tcount = 0; 
-
-			//If there are any values, they need to be inserted into Lua env
-			if ( lt_countall( zmodel ) > 1 ) {
-				//If we fail to insert, this is a model error and worthy of a 500...
-				if ( !ztable_to_lua( L, zmodel ) ) {
-					return http_error( res, 500, "Error converting original model!" );
-				}
-			
-				//Make the old model global, & destroy the ref to the old model...	
-				lua_setglobal( L, mkey );
-				lt_free( zmodel );
-			}
-
-			//Open the file that will execute the model
-			snprintf( mpath, sizeof( mpath ), "%s/%s", conn->hconfig->dir, f );
-			fprintf( stderr, "Executing model %s\n", mpath );
-
-			//...
-			if ( !lua_exec_file( L, mpath, err, sizeof( err ) ) ) {
-				return http_error( res, 500, "%s", err );
-			}
-
-			//Debug dump of whatever model is there
+			//if ( lua_isnil( L, -1 ) ) { lua_pop( L, 1 ); }
+		}
+	#endif
+fprintf( stderr, "==== USE %s MODEL\n", tcount > 1 ? "PREVIOUS" : "ONE" );
+		if ( tcount > 1 ) {
+			lua_newtable( L );
+			lua_getglobal( L, mkey );
+			//if ( lua_isnil( L, -1 ) ) { lua_pop( L, 1 ); }
+			lua_dumpstack( L, NULL );
+		#if 0
+			lua_settable( L, 1 );
 			lua_stackdump( L );
+			getchar();
+			lua_setglobal( L, mkey );
+			lua_stackdump( L );
+		#endif
+getchar();
+		} 
+		else if ( ccount ) {
+			lua_setglobal( L, mkey );
+		}
+		//if ( tcount > 1 ) then we'll need to merge the previous model along with whatever was brought back
+fprintf( stderr, "==== STACK AFTER GLOBAL SET\n" );
+		lua_dumpstack( L, NULL );
+getchar();
+	#else	
+		//Initialize a model here	(TODO: modulo value can be much smaller)
+		if ( !lt_init( zmodel, NULL, 2048 ) ) {
+			return http_error( res, 500, "Failed to init model table." );
+		}
 
-			//Get name of model file in question 
-			memcpy( msymname, &f[4], strlen( f ) - 8 );
-
-			//Get a count of the values which came from the model
-			tcount = lua_gettop( L );
-			fprintf( stderr, "executed model contains %d values\n", tcount );
-	
-			//Initialize a model here	(TODO: modulo value can be much smaller)
-			if ( !lt_init( zmodel, NULL, 2048 ) ) {
-				return http_error( res, 500, "Failed to init model table." );
-			}
-
-			for ( int vi = tcount; vi > 0; vi-- ) {
-			//for ( int vi = 1; vi <= tcount ; vi++ ) {
-				if ( lua_isstring( L, vi ) ) 
-					lt_addtextkey( zmodel, msymname ), lt_addtextvalue( zmodel, lua_tostring( L, vi ));
-				else if ( lua_isinteger( L, vi ) || lua_isnumber( L, vi ) ) 
-					lt_addtextkey( zmodel, msymname ), lt_addintvalue( zmodel, lua_tonumber( L, vi ));
-				else if ( lua_islightuserdata( L, vi ) || lua_isuserdata( L, vi ) ) 
-					lt_addtextkey( zmodel, msymname ), lt_addudvalue( zmodel, lua_touserdata(L, vi ));
-			#if 0
-				//TODO: We can evenaully handle threads and functions from here...
-			#endif
-				else if ( lua_istable( L, vi ) ) {
-					//This function does not add any key
-					if ( !lua_to_ztable( L, vi, zmodel ) ) {
-						//TODO: Free all things
-						lt_free( zmodel );
-						lua_close( L );
-						//One of two things happened, you used an invalid key or you ran out of stack space...
-						//both are important and need to be distinguished between
-						return http_error( res, 500, "%s", "Failed to convert Lua to zTable" );
-					}
-					//lua_stackdump( L );
-				}
-				else {
+		for ( int vi = tcount; vi > 0; vi-- ) { /*for ( int vi = 1; vi <= tcount ; vi++ ) */ 
+			if ( lua_isstring( L, vi ) ) 
+				lt_addtextkey( zmodel, msymname ), lt_addtextvalue( zmodel, lua_tostring( L, vi ));
+			else if ( lua_isinteger( L, vi ) || lua_isnumber( L, vi ) ) 
+				lt_addtextkey( zmodel, msymname ), lt_addintvalue( zmodel, lua_tonumber( L, vi ));
+			else if ( lua_islightuserdata( L, vi ) || lua_isuserdata( L, vi ) ) 
+				lt_addtextkey( zmodel, msymname ), lt_addudvalue( zmodel, lua_touserdata(L, vi ));
+			else if ( lua_istable( L, vi ) ) {
+				//This function does not add any key
+				if ( !lua_to_ztable( L, vi, zmodel ) ) {
 					//TODO: Free all things
 					lt_free( zmodel );
 					lua_close( L );
-					return http_error( res, 500, "%s", "Lua threads and functions as models not supported yet." );
-				}
-
-				if ( !lua_istable( L, vi ) ) {
-					lt_finalize( zmodel );
+					return http_error( res, 500, "%s", "Failed to convert Lua to zTable" );
 				}
 			}
+			else {
+				//TODO: Free all things
+				lt_free( zmodel );
+				lua_close( L );
+				return http_error( res, 500, "%s", "Threads & functions as models not supported yet." );
+			}
 
-			//Remove the values added
-			lua_pop( L, tcount );
-
-getchar();
+			if ( !lua_istable( L, vi ) ) {
+				lt_finalize( zmodel );
+			}
 		}
+
+		//Remove the values added
+		lua_pop( L, tcount );
+fprintf( stderr, "==== MODEL in C\n" );
+lt_dump( zmodel );
+getchar();
+	#endif
 	}
+
+fprintf( stderr, "==== FINAL MODEL\n" );
+		lua_getglobal( L, mkey );
+		if ( lua_isnil( L, -1 ) ) {
+			lua_pop( L, 1 );
+		}
+lua_dumpstack( L, NULL );
+return http_error( res, 200, "No error, stop here." );
 
 	//Lock the model for hashing's sake
 	lt_lock( zmodel );
