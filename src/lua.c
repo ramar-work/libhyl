@@ -25,6 +25,7 @@ const char read_only_block[] = " \
 	end \
 ";
 
+
 static struct mvcmeta_t { 
 	const char *dir; 
 	const char *reserved; 
@@ -357,24 +358,56 @@ int ztable_to_lua ( lua_State *L, zTable *t ) {
 //Convert Lua tables to regular tables
 int lua_to_ztable ( lua_State *L, int index, zTable *t ) {
 	lua_pushnil( L );
+
 	while ( lua_next( L, index ) != 0 ) {
-		int kt, vt;
+		int kt = lua_type( L, -2 ); 
+		int vt = lua_type( L, -1 );
+
+//fprintf( stderr, "%s -> %s\n", lua_typename( L, kt ), lua_typename( L, vt ) );
 
 		//Get key (remember Lua indices always start at 1.  Hence the minus.
-		if (( kt = lua_type( L, -2 )) == LUA_TNUMBER )
+		if ( kt == LUA_TNUMBER ) {
+//fprintf( stderr, "v: %lld\n", lua_tointeger( L, -2 ));
 			lt_addintkey( t, lua_tointeger( L, -2 ) - 1 );
-		else if ( kt  == LUA_TSTRING ) {
-			lt_addtextkey( t, (char *)lua_tostring( L, -2 ));
 		}
+		else if ( kt == LUA_TSTRING ) {
+			lt_addtextkey( t, (char *)lua_tostring( L, -2 ));
+//fprintf( stderr, "k: %s\n", lua_tostring( L, -2 ));
+		}
+		else {
+			//Invalid key type
+			fprintf( stderr, "Got invalid key in table!" );
+			return 0;
+		}
+
 		//Get value
-		if (( vt = lua_type( L, -1 )) == LUA_TNUMBER )
+		if ( vt == LUA_TNUMBER ) {
+//fprintf( stderr, "v: %lld\n", lua_tointeger( L, -1 ));
 			lt_addintvalue( t, lua_tointeger( L, -1 ));
-		else if ( vt  == LUA_TSTRING )
+		}
+		else if ( vt  == LUA_TSTRING ) {
+		#if 1
+//fprintf( stderr, "v: %s\n", lua_tostring( L, -1 ));
 			lt_addtextvalue( t, (char *)lua_tostring( L, -1 ));
+		#else
+			const char *a = NULL;
+			if ( ( a = lua_tostring( L, -1 ) ) )
+				lt_addtextvalue( t, a );
+			else {
+				lt_addtextvalue( t, (char *)"" );
+			}	
+		#endif
+		}
 		else if ( vt == LUA_TTABLE ) {
 			lt_descend( t );
+			//tables with nothing should not recurse...
 			lua_to_ztable( L, index + 2, t ); 
 			lt_ascend( t );
+		}
+		else {
+			fprintf( stderr, "Got invalid value in table!" );
+			exit( 0 );
+			return 0;
 		}
 
 		//FPRINTF( "popping last two values...\n" );
@@ -733,6 +766,15 @@ const int filter
 	for ( struct imvc_t **m = pp.imvc_tlist; *m; m++ ) {
 		const char *f = (*m)->file;
 
+			#if 0	
+			ircount = lua_gettop( L );
+
+			//Check for model in Lua's global environment and convert that as well
+			lua_getglobal( L, mkey );
+			if ( lua_isnil( L, -1 ) ) {
+				lua_pop( L, 1 );
+			}
+			#endif
 		if ( *f == 'a' ) {
 			//Define
 			char err[ 2048 ] = { 0 }, msymname[ 1024 ] = { 0 }, mpath[ 2048 ] = {0};
@@ -752,30 +794,30 @@ const int filter
 
 			//Open the file that will execute the model
 			snprintf( mpath, sizeof( mpath ), "%s/%s", conn->hconfig->dir, f );
+			fprintf( stderr, "Executing model %s\n", mpath );
+
+			//...
 			if ( !lua_exec_file( L, mpath, err, sizeof( err ) ) ) {
-				//Need to free everything...
 				return http_error( res, 500, "%s", err );
 			}
 
+			//Debug dump of whatever model is there
+			lua_stackdump( L );
+
 			//Get name of model file in question 
 			memcpy( msymname, &f[4], strlen( f ) - 8 );
-			ircount = lua_gettop( L );
-	
-			//Check for model in Lua's global environment and convert that as well
-			lua_getglobal( L, mkey );
-			if ( lua_isnil( L, -1 ) ) {
-				lua_pop( L, 1 );
-			}
 
 			//Get a count of the values which came from the model
 			tcount = lua_gettop( L );
+			fprintf( stderr, "executed model contains %d values\n", tcount );
 	
 			//Initialize a model here	(TODO: modulo value can be much smaller)
 			if ( !lt_init( zmodel, NULL, 2048 ) ) {
 				return http_error( res, 500, "Failed to init model table." );
 			}
 
-			for ( int vi = 1; vi <= tcount; vi++ ) {
+			for ( int vi = tcount; vi > 0; vi-- ) {
+			//for ( int vi = 1; vi <= tcount ; vi++ ) {
 				if ( lua_isstring( L, vi ) ) 
 					lt_addtextkey( zmodel, msymname ), lt_addtextvalue( zmodel, lua_tostring( L, vi ));
 				else if ( lua_isinteger( L, vi ) || lua_isnumber( L, vi ) ) 
@@ -791,8 +833,11 @@ const int filter
 						//TODO: Free all things
 						lt_free( zmodel );
 						lua_close( L );
+						//One of two things happened, you used an invalid key or you ran out of stack space...
+						//both are important and need to be distinguished between
 						return http_error( res, 500, "%s", "Failed to convert Lua to zTable" );
 					}
+					//lua_stackdump( L );
 				}
 				else {
 					//TODO: Free all things
@@ -808,6 +853,8 @@ const int filter
 
 			//Remove the values added
 			lua_pop( L, tcount );
+
+getchar();
 		}
 	}
 
