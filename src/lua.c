@@ -133,17 +133,11 @@ void lua_istack ( lua_State *L ) {
 
 
 
-void lua_dumpstack ( lua_State *L, int *sd ) {
+//TODO: Reject keys that aren't a certain type
+void lua_dumpstack ( lua_State *L ) {
 	const char spaces[] = /*"\t\t\t\t\t\t\t\t\t\t"*/"          ";
-	struct data { 
-		unsigned short count, index; 
-	#if 0
-		char end; 
-		const void *ptr; 
-	#endif
-	}; 
-	struct data data[64] = {0}, *dd = data;
 	const int top = lua_gettop( L );
+	struct data { unsigned short count, index; } data[64] = {0}, *dd = data;
 	dd->count = 1;
 
 	//Return early if no values
@@ -153,11 +147,9 @@ void lua_dumpstack ( lua_State *L, int *sd ) {
 	}
 
 	//Loop through all values on the stack
-	for ( int it, depth=0, ix=0, index=lua_gettop( L ); index >= 1; ix++ ) {
+	for ( int it, depth=0, ix=0, index=top; index >= 1; ix++ ) {
 		fprintf( stderr, "%s[%d:%d] ", &spaces[ 10 - depth ], index, ix );
-		//fprintf( stderr, "(%s) > ", index, ix, lua_typename( L, lua_type( L, index ) ) ); 
 
-		//TODO: Reject keys that aren't a certain type
 		for ( int t = 0, count = dd->count; count > 0; count-- ) {
 			if ( ( it = lua_type( L, index ) ) == LUA_TSTRING )
 				fprintf( stderr, "(%s) %s", lua_typename( L, it ), lua_tostring( L, index ) );
@@ -177,154 +169,31 @@ void lua_dumpstack ( lua_State *L, int *sd ) {
 				fprintf( stderr, "(%s) %p", lua_typename( L, it ), lua_topointer( L, index ) );
 			}
 
-			// two values, so index needs to go up once
-			if ( count > 1 ) {
-				index++, t = 1, dd->count -= 2; 
-				fprintf( stderr, " -> " );
-			}
+			//Handle keys
+			if ( count > 1 )
+				index++, t = 1, dd->count -= 2, fprintf( stderr, " -> " );
+			//Handle new tables
 			else if ( it == LUA_TTABLE ) {
 				lua_pushnil( L );
 				if ( lua_next( L, index ) != 0 ) {
 					++dd, ++depth; 
 					dd->index = index, dd->count = 2, index = lua_gettop( L );
-//				fprintf( stderr, " ** TABLE AT %p has keys", dd->ptr );
 				}
 			}
+			//Handle situations in which a table is on the "other side"
 			else if ( t ) {
-//fprintf( stderr, "stack before any pops\n" );
-//lua_istack( L );
 				lua_pop( L, 1 );
-//lua_istack( L );
+				//TODO: This is quite gnarly... Maybe clarify a bit? 
 				while ( depth && !lua_next( L, dd->index ) ) {
-//fprintf( stderr, "stack before loop pop\n" );
-//lua_istack( L );
-//fprintf( stderr, "%d\n", index );
-//fprintf( stderr, "%s\n", lua_tostring( L, index  ) );
-					if ( ( index = dd->index ) > top ) {
-						lua_pop( L, 1 );
-					}
-//					fprintf( stderr, " ** NO MORE KEYS AT %p!", dd->ptr );
-					--dd, --depth;
-					fprintf( stderr, "\n%s}", &spaces[ 10 - depth ] );
-//fprintf( stderr, "stack after loop pop\n" );
-//lua_istack( L );
+					( ( index = dd->index ) > top ) ? lua_pop( L, 1 ) : 0;
+					--dd, --depth, fprintf( stderr, "\n%s}", &spaces[ 10 - depth ] );
 				}
-//lua_istack( L );
-//fprintf( stderr, "\n after move lua_gettop: %d\n", lua_gettop( L ) );
-				if ( depth ) {	
-//					fprintf( stderr, " ** MORE KEYS ARE ON TABLE AT %p!", dd->ptr );
-					dd->count = 2, index = lua_gettop( L );
-				}
+				( depth ) ? dd->count = 2, index = lua_gettop( L ) : 0;
 			}
 		}
 		fprintf( stderr, "\n" );
 		index--;
 	}
-	fprintf( stderr, "lua_gettop: %d\n", lua_gettop( L ) );
-}
-
-
-static void lua_dumptable ( lua_State *L, int *pos, int *sd ) {
-	lua_pushnil( L );
-	//FPRINTF( "*pos = %d\n", *pos );
-
-	while ( lua_next( L, *pos ) != 0 ) {
-		//Fancy printing
-		fprintf( stderr, "%s", &"\t\t\t\t\t\t\t\t\t\t"[ 10 - *sd ] );
-		//PRETTY_TABS( *sd );
-		fprintf( stderr, "[%3d:%2d] => ", *pos, *sd );
-
-		//Print both left and right side
-		for ( int i = -2; i < 0; i++ ) {
-			int t = lua_type( L, i );
-			const char *type = lua_typename( L, t );
-				//fprintf( stderr, "(%8s) %p", type, (void *)lua_tocfunction( L, i ) );
-
-			if ( t == LUA_TSTRING )
-				fprintf( stderr, "(%s) %s", type, lua_tostring( L, i ));
-			else if ( t == LUA_TFUNCTION )
-				fprintf( stderr, "(%s) %d", type, i /*(void *)lua_tocfunction( L, pos )*/ );
-			else if ( t == LUA_TNUMBER )
-				fprintf( stderr, "(%s) %lld", type, (long long)lua_tointeger( L, i ));
-			else if ( t == LUA_TBOOLEAN)
-				fprintf( stderr, "(%s) %s", type, lua_toboolean( L, i ) ? "true" : "false" );
-			else if ( t == LUA_TTHREAD )
-				fprintf( stderr, "(%s) %p", type, lua_tothread( L, i ) );
-			else if ( t == LUA_TLIGHTUSERDATA || t == LUA_TUSERDATA )
-				fprintf( stderr, "(%s) %p", type, lua_touserdata( L, i ) );
-			else if ( t == LUA_TNIL ||  t == LUA_TNONE )
-				fprintf( stderr, "(%s) %p", type, lua_topointer( L, i ) );
-			else if ( t == LUA_TTABLE ) {
-			#if 1
-				fprintf( stderr, "(%s) %p\n", type, lua_topointer( L, i ) );
-				(*sd) ++, (*pos) += 2;
-				lua_dumptable( L, pos, sd );
-				(*sd) --, (*pos) -= 2;
-			#else
-				fprintf( stderr, "(%8s) %p {\n", type, lua_topointer( L, i ) );
-				int diff = lua_gettop( L ) - *pos;
-
-				(*sd) ++, (*pos) += diff;
-				lua_dumptable( L, pos, sd );
-				(*sd) --, (*pos) -= diff;
-			#endif
-				//PRETTY_TABS( *sd );
-				fprintf( stderr, "%s", &"\t\t\t\t\t\t\t\t\t\t"[ 10 - *sd ] );
-				fprintf( stderr, "}" );
-			}
-
-			fprintf( stderr, "%s", ( i == -2 ) ? " -> " : "\n" );
-			//PRETTY_TABS( *sd );
-		}
-		//getchar();
-		//FPRINTF( "Popping key\n" );
-		lua_pop( L, 1 );
-	}
-	return;
-}
-
-
-void lua_stackdump ( lua_State *L ) {
-	//No top
-	if ( lua_gettop( L ) == 0 ) {
-		FPRINTF( "No values on stack...\n" );
-		return;
-	}
-
-	//Loop again, but show the value of each key on the stack
-	for ( int pos = 1; pos <= lua_gettop( L ); pos++ ) {
-		int t = lua_type( L, pos );
-		const char *type = lua_typename( L, t );
-		fprintf( stderr, "[%3d] => ", pos );
-
-		if ( t == LUA_TSTRING )
-			fprintf( stderr, "(%8s) %s", type, lua_tostring( L, pos ));
-		else if ( t == LUA_TFUNCTION ) {
-			fprintf( stderr, "(%8s) %d", type, pos /*(void *)lua_tocfunction( L, pos )*/ );
-		}
-		else if ( t == LUA_TNUMBER )
-			fprintf( stderr, "(%8s) %lld", type, (long long)lua_tointeger( L, pos ));
-		else if ( t == LUA_TBOOLEAN)
-			fprintf( stderr, "(%8s) %s", type, lua_toboolean( L, pos ) ? "true" : "false" );
-		else if ( t == LUA_TTHREAD )
-			fprintf( stderr, "(%8s) %p", type, lua_tothread( L, pos ) );
-		else if ( t == LUA_TLIGHTUSERDATA || t == LUA_TUSERDATA )
-			fprintf( stderr, "(%8s) %p", type, lua_touserdata( L, pos ) );
-		else if ( t == LUA_TNIL ||  t == LUA_TNONE )
-			fprintf( stderr, "(%8s) %p", type, lua_topointer( L, pos ) );
-		else if ( t == LUA_TTABLE ) {
-		#if 0
-			fprintf( stderr, "(%8s) %p", type, lua_topointer( L, pos ) );
-		#else
-			fprintf( stderr, "(%8s) %p {\n", type, lua_topointer( L, pos ) );
-			int sd = 1;
-			lua_dumptable( L, &pos, &sd );
-			fprintf( stderr, "}" );
-		#endif
-		}	
-		fprintf( stderr, "\n" );
-	}
-	return;
 }
 
 
@@ -899,7 +768,7 @@ fprintf( stderr, "==== REINSERTING MODEL\n" );
 #endif
 
 fprintf( stderr, "==== BEGINNING OF INVOCATION\n" );
-lua_dumpstack( L, NULL );
+lua_dumpstack( L );
 
 		//Open the file that will execute the model
 		snprintf( mpath, sizeof( mpath ), "%s/%s", conn->hconfig->dir, (*m)->file );
@@ -912,7 +781,7 @@ lua_dumpstack( L, NULL );
 
 		//Debug dump of whatever model is there
 fprintf( stderr, "==== NEW MODEL\n" );
-		lua_dumpstack( L, NULL );
+		lua_dumpstack( L );
 		//lua_stackdump( L );
 
 		//Get name of model file in question 
@@ -934,7 +803,7 @@ fprintf( stderr, "==== USE %s MODEL\n", tcount > 1 ? "PREVIOUS" : "ONE" );
 			lua_newtable( L );
 			lua_getglobal( L, mkey );
 			//if ( lua_isnil( L, -1 ) ) { lua_pop( L, 1 ); }
-			lua_dumpstack( L, NULL );
+			lua_dumpstack( L );
 		#if 0
 			lua_settable( L, 1 );
 			lua_stackdump( L );
@@ -949,7 +818,7 @@ getchar();
 		}
 		//if ( tcount > 1 ) then we'll need to merge the previous model along with whatever was brought back
 fprintf( stderr, "==== STACK AFTER GLOBAL SET\n" );
-		lua_dumpstack( L, NULL );
+		lua_dumpstack( L );
 getchar();
 	#else	
 		//Initialize a model here	(TODO: modulo value can be much smaller)
@@ -998,7 +867,7 @@ fprintf( stderr, "==== FINAL MODEL\n" );
 		if ( lua_isnil( L, -1 ) ) {
 			lua_pop( L, 1 );
 		}
-lua_dumpstack( L, NULL );
+lua_dumpstack( L );
 return http_error( res, 200, "No error, stop here." );
 
 	//Lock the model for hashing's sake
