@@ -2,12 +2,12 @@
 #include "../src/lua.h"
 
 char *files[] = {
+#if 0
 	"tests/lua/string.lua",
  	"tests/lua/table.lua",
-#if 0
  	"tests/lua/deeptable.lua",
- 	"tests/lua/multtable.lua",
 #endif
+ 	"tests/lua/multtable.lua",
   NULL
 };
 
@@ -25,11 +25,11 @@ int main ( int argc, char *argv[] ) {
 		}
 
 		//Dump it	
+		fprintf( stderr, "Stack contains %d values.\n", lua_gettop( L ) );
 		lua_dumpstack( L, NULL );
 
 		//Wipe it
-		int a = lua_gettop( L );
-		lua_pop( L, a );
+		lua_pop( L, lua_gettop( L ) );
 	}	
 
 	lua_close( L );

@@ -14,7 +14,9 @@ return {
 			}
 		}
 	}
-}, {
+}
+, 
+{
 	box = "boxer"
 ,	cunty = {
 		chicken = "monkey"

@@ -121,7 +121,7 @@ int lua_getarg( ) {
 
 void lua_dumpstack ( lua_State *L, int *sd ) {
 	int top; 
-	struct data { short depth; short count; short index; } data[64] = {0};
+	struct data { unsigned short count; unsigned short index; } data[64] = {0};
 	struct data *dd = data;
 	dd->index = 1;
 
@@ -131,10 +131,12 @@ void lua_dumpstack ( lua_State *L, int *sd ) {
 		return;
 	}
 
+	fprintf( stderr, "stack values = %d\n", top );
+
 	//Loop through all values on the stack
-	for ( int xx = 0, it, index = 1, ix = 0; index <= top; ix++ ) {
+	for ( int xx = 0, depth = 0, it, index = 1, ix = 0; index <= top; ix++ ) {
 		if ( !xx ) {
-			fprintf( stderr, "%s", &"\t\t\t\t\t\t\t\t\t\t"[ 10 - dd->depth ] );
+			fprintf( stderr, "%s", &"\t\t\t\t\t\t\t\t\t\t"[ 10 - depth ] );
 			fprintf( stderr, "%d, %d -> %s ", index, ix, lua_typename( L, lua_type( L, index ) ) ); 
 			if ( ( it = lua_type( L, index ) ) == LUA_TSTRING )
 				fprintf( stderr, "(%s) %s", lua_typename( L, it ), lua_tostring( L, index ) );
@@ -156,24 +158,34 @@ void lua_dumpstack ( lua_State *L, int *sd ) {
 		}
 		
 		xx = 0;
-		if ( it == LUA_TTABLE || ( dd->depth && --dd->count == 0 ) ) {
+		if ( it == LUA_TTABLE || ( depth && --dd->count == 0 ) ) {
 			if ( it == LUA_TTABLE )
 				lua_pushnil( L );
-			else if ( dd->depth && dd->count == 0 ) {
+			else if ( depth && dd->count == 0 ) {
 				lua_pop( L, 1 ), index = dd->index, top -= 2;
 			}
 			if ( !lua_next( L, index ) ) {
-				dd--, index = dd->index, xx = 1;
+				--dd, --depth, index = dd->index, xx = 1;
 				//fprintf( stderr, "%d, %d, top: %d\n", dd->depth, dd->count, top );
-				fprintf( stderr, "\n%s}", &"\t\t\t\t\t\t\t\t\t\t"[ 10 - dd->depth ] );
+				fprintf( stderr, "\n%s}", &"\t\t\t\t\t\t\t\t\t\t"[ 10 - depth ] );
+				//fprintf( stderr, "\n%s}", &"           "[ 10 - depth ] );
 			}
 			else {
 				//fprintf( stderr, "AT START OF TABLE!\n" ); 
 				if ( it == LUA_TTABLE ) {
-					int depth = dd->depth;
-					++dd, dd->depth = ++depth, dd->index = index;
+					++dd, ++depth, dd->index = index;
 				}
-				top += 2, dd->count = 2;
+#if 0
+for ( int i = 1; i <= 4; i++ ) {
+	fprintf( stderr, "[%d] -> %s", i, lua_typename( L, lua_type( L, i ) ) );
+	if ( lua_type( L, i ) == LUA_TSTRING ) fprintf( stderr, " = %s", lua_tostring( L, i ) );
+	fprintf( stderr, "\n" );
+}
+getchar();
+#endif
+				dd->count = 2, top += 2, index = lua_gettop( L ) - 1;
+				fprintf( stderr, "\n" );
+				continue;
 			}
 			fprintf( stderr, "\n" );
 		}
