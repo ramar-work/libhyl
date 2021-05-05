@@ -29,6 +29,7 @@ int main ( int argc, char *argv[] ) {
 		//Dump it	
 		fprintf( stderr, "Stack contains %d values.\n", lua_gettop( L ) );
 		lua_dumpstack( L, NULL );
+		lua_dumpstack( L, NULL );
 
 		//Wipe it
 		lua_pop( L, lua_gettop( L ) );

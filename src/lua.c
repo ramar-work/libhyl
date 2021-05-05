@@ -121,8 +121,13 @@ int lua_getarg( ) {
 
 
 void lua_istack ( lua_State *L ) {
+	fprintf( stderr, "\n" );
 	for ( int i = 1; i <= lua_gettop( L ); i++ ) {
-		fprintf( stderr, "[%d] => %s\n", i, lua_typename( L, lua_type( L, i ) ) );
+		fprintf( stderr, "[%d] => %s", i, lua_typename( L, lua_type( L, i ) ) );
+		if ( lua_type( L, i ) == LUA_TSTRING ) {
+			fprintf( stderr, " > %s", lua_tostring( L, i ) );
+		}
+		fprintf( stderr, "\n" );
 	}
 }
 
@@ -138,6 +143,8 @@ void lua_dumpstack ( lua_State *L, int *sd ) {
 		fprintf( stderr, "%s\n", "No values on stack." );
 		return;
 	}
+
+	int top = lua_gettop( L );
 
 	//Loop through all values on the stack
 	for ( int it, depth=0, ix=0, index=lua_gettop( L ); index >= 1; ix++ ) {
@@ -181,22 +188,41 @@ void lua_dumpstack ( lua_State *L, int *sd ) {
 				if ( lua_next( L, index ) != 0 ) {
 					++dd, ++depth, dd->index = index, dd->count = 2, 
 					dd->ptr = lua_topointer( L, index ), index = lua_gettop( L );
-					fprintf( stderr, " ** TABLE AT %p has keys", dd->ptr );
+//					fprintf( stderr, " ** TABLE AT %p has keys", dd->ptr );
 				}
 			}
 			else if ( t ) {
+//fprintf( stderr, "stack before any pops\n" );
+//lua_istack( L );
 				lua_pop( L, 1 );
+//lua_istack( L );
 				while ( depth && !lua_next( L, dd->index ) ) {
-					fprintf( stderr, " ** NO MORE KEYS AT %p!", dd->ptr );
+					index = dd->index;
+//fprintf( stderr, "stack before loop pop\n" );
+//lua_istack( L );
+//fprintf( stderr, "%d\n", index );
+//fprintf( stderr, "%s\n", lua_tostring( L, index  ) );
+					if ( index > top ) {
+						lua_pop( L, 1 );
+					}
+//					fprintf( stderr, " ** NO MORE KEYS AT %p!", dd->ptr );
 					dd->end = 1;
 					--dd;
 					--depth;
-					index = dd->index;
-					lua_pop( L, 1 );
 					fprintf( stderr, "\n%s}", &spaces[ 10 - depth ] );
+//fprintf( stderr, "stack after loop pop\n" );
+//lua_istack( L );
+#if 0
+//fprintf( stderr, "dd->ptr:   %p\n", dd->ptr );
+//fprintf( stderr, "dd->index: %d\n", dd->index );
+//fprintf( stderr, "dd->count: %d\n", dd->count );
+//fprintf( stderr, "dd->end:   %d\n", dd->end );
+#endif
 				}
+//lua_istack( L );
+//fprintf( stderr, "\n after move lua_gettop: %d\n", lua_gettop( L ) );
 				if ( depth ) {	
-					fprintf( stderr, " ** MORE KEYS ARE ON TABLE AT %p!", dd->ptr );
+//					fprintf( stderr, " ** MORE KEYS ARE ON TABLE AT %p!", dd->ptr );
 					dd->count = 2, index = lua_gettop( L );
 				}
 			}
@@ -205,6 +231,7 @@ void lua_dumpstack ( lua_State *L, int *sd ) {
 		fprintf( stderr, "\n" );
 		index--;
 	}
+	fprintf( stderr, "lua_gettop: %d\n", lua_gettop( L ) );
 }
 
 
