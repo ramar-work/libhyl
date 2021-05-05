@@ -19,7 +19,7 @@ return {
 {
 	box = "boxer"
 ,	cunty = {
-		chicken = "monkey"
-	, jazz = "turtle"
+		chicken = "fried"
+	, rock = "&roll"
 	}
 }

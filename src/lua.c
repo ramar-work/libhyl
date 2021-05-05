@@ -131,10 +131,10 @@ void lua_dumpstack ( lua_State *L, int *sd ) {
 	const char spaces[] = /*"\t\t\t\t\t\t\t\t\t\t"*/"          ";
 	struct data { unsigned short count, index; char end; const void *ptr; }; 
 	struct data data[64] = {0}, *dd = data;
-	dd->index = 1, dd->count = 1, dd->end = 0;
+	dd->count = 1, dd->end = 0;
 
 	//Return early if no values
-	if ( lua_gettop( L ) == 0 ) {
+	if ( ( dd->index = lua_gettop( L ) ) == 0 ) {
 		fprintf( stderr, "%s\n", "No values on stack." );
 		return;
 	}
@@ -142,8 +142,14 @@ void lua_dumpstack ( lua_State *L, int *sd ) {
 	//Loop through all values on the stack
 	for ( int it, depth=0, ix=0, index=lua_gettop( L ); index >= 1; ix++ ) {
 		fprintf( stderr, "%s", &spaces[ 10 - depth ] );
-		//fprintf( stderr, "%d, %d -> %s ", index, ix, lua_typename( L, lua_type( L, index ) ) ); 
+		fprintf( stderr, "%d, %d -> %s ", index, ix, lua_typename( L, lua_type( L, index ) ) ); 
+#if 0
 		lua_istack( L );	
+		fprintf( stderr, "dd->ptr %p\n", dd->ptr );
+		fprintf( stderr, "dd->count %d\n", dd->count );
+		fprintf( stderr, "dd->index %d\n", dd->index );
+		fprintf( stderr, "dd->end %c\n", dd->end );
+#endif
 
 		//TODO: Reject keys that aren't a certain type
 		for ( int t = 0, count = dd->count; count > 0; count-- ) {
