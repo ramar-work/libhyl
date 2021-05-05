@@ -119,6 +119,14 @@ int lua_getarg( ) {
 }
 
 
+
+void lua_istack ( lua_State *L ) {
+	for ( int i = 1; i <= lua_gettop( L ); i++ ) {
+		fprintf( stderr, "[%d] => %s\n", i, lua_typename( L, lua_type( L, i ) ) );
+	}
+}
+
+
 void lua_dumpstack ( lua_State *L, int *sd ) {
 	const char spaces[] = /*"\t\t\t\t\t\t\t\t\t\t"*/"          ";
 	struct data { unsigned short count, index; char end; const void *ptr; }; 
@@ -134,7 +142,8 @@ void lua_dumpstack ( lua_State *L, int *sd ) {
 	//Loop through all values on the stack
 	for ( int it, depth=0, ix=0, index=lua_gettop( L ); index >= 1; ix++ ) {
 		fprintf( stderr, "%s", &spaces[ 10 - depth ] );
-		fprintf( stderr, "%d, %d -> %s ", index, ix, lua_typename( L, lua_type( L, index ) ) ); 
+		//fprintf( stderr, "%d, %d -> %s ", index, ix, lua_typename( L, lua_type( L, index ) ) ); 
+		lua_istack( L );	
 
 		//TODO: Reject keys that aren't a certain type
 		for ( int t = 0, count = dd->count; count > 0; count-- ) {
@@ -155,7 +164,7 @@ void lua_dumpstack ( lua_State *L, int *sd ) {
 			else if ( it == LUA_TTABLE ) {
 				fprintf( stderr, "(%s) %p", lua_typename( L, it ), lua_topointer( L, index ) );
 			}
-#if 0
+#if 1
 			// two values, so index needs to go up once
 			if ( count > 1 ) {
 				index++, t = 1, dd->count -= 2; 
