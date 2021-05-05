@@ -2,13 +2,11 @@
 #include "../src/lua.h"
 
 char *files[] = {
-#if 0
  	"tests/lua/table.lua",
- 	"tests/lua/deeptable-alpha.lua",
- 	"tests/lua/deeptable-mixed.lua",
 	"tests/lua/string.lua",
  	"tests/lua/values.lua",
-#endif
+ 	"tests/lua/deeptable-alpha.lua",
+ 	"tests/lua/deeptable-mixed.lua",
  	"tests/lua/multtable.lua",
   NULL
 };

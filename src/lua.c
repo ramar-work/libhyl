@@ -132,31 +132,30 @@ void lua_istack ( lua_State *L ) {
 }
 
 
+
 void lua_dumpstack ( lua_State *L, int *sd ) {
 	const char spaces[] = /*"\t\t\t\t\t\t\t\t\t\t"*/"          ";
-	struct data { unsigned short count, index; char end; const void *ptr; }; 
+	struct data { 
+		unsigned short count, index; 
+	#if 0
+		char end; 
+		const void *ptr; 
+	#endif
+	}; 
 	struct data data[64] = {0}, *dd = data;
-	dd->count = 1, dd->end = 0;
+	const int top = lua_gettop( L );
+	dd->count = 1;
 
 	//Return early if no values
-	if ( ( dd->index = lua_gettop( L ) ) == 0 ) {
+	if ( ( dd->index = top ) == 0 ) {
 		fprintf( stderr, "%s\n", "No values on stack." );
 		return;
 	}
 
-	int top = lua_gettop( L );
-
 	//Loop through all values on the stack
 	for ( int it, depth=0, ix=0, index=lua_gettop( L ); index >= 1; ix++ ) {
-		fprintf( stderr, "%s", &spaces[ 10 - depth ] );
-		fprintf( stderr, "%d, %d -> %s ", index, ix, lua_typename( L, lua_type( L, index ) ) ); 
-#if 0
-		lua_istack( L );	
-		fprintf( stderr, "dd->ptr %p\n", dd->ptr );
-		fprintf( stderr, "dd->count %d\n", dd->count );
-		fprintf( stderr, "dd->index %d\n", dd->index );
-		fprintf( stderr, "dd->end %c\n", dd->end );
-#endif
+		fprintf( stderr, "%s[%d:%d] ", &spaces[ 10 - depth ], index, ix );
+		//fprintf( stderr, "(%s) > ", index, ix, lua_typename( L, lua_type( L, index ) ) ); 
 
 		//TODO: Reject keys that aren't a certain type
 		for ( int t = 0, count = dd->count; count > 0; count-- ) {
@@ -177,7 +176,7 @@ void lua_dumpstack ( lua_State *L, int *sd ) {
 			else if ( it == LUA_TTABLE ) {
 				fprintf( stderr, "(%s) %p", lua_typename( L, it ), lua_topointer( L, index ) );
 			}
-#if 1
+
 			// two values, so index needs to go up once
 			if ( count > 1 ) {
 				index++, t = 1, dd->count -= 2; 
@@ -186,9 +185,9 @@ void lua_dumpstack ( lua_State *L, int *sd ) {
 			else if ( it == LUA_TTABLE ) {
 				lua_pushnil( L );
 				if ( lua_next( L, index ) != 0 ) {
-					++dd, ++depth, dd->index = index, dd->count = 2, 
-					dd->ptr = lua_topointer( L, index ), index = lua_gettop( L );
-//					fprintf( stderr, " ** TABLE AT %p has keys", dd->ptr );
+					++dd, ++depth; 
+					dd->index = index, dd->count = 2, index = lua_gettop( L );
+//				fprintf( stderr, " ** TABLE AT %p has keys", dd->ptr );
 				}
 			}
 			else if ( t ) {
@@ -197,27 +196,18 @@ void lua_dumpstack ( lua_State *L, int *sd ) {
 				lua_pop( L, 1 );
 //lua_istack( L );
 				while ( depth && !lua_next( L, dd->index ) ) {
-					index = dd->index;
 //fprintf( stderr, "stack before loop pop\n" );
 //lua_istack( L );
 //fprintf( stderr, "%d\n", index );
 //fprintf( stderr, "%s\n", lua_tostring( L, index  ) );
-					if ( index > top ) {
+					if ( ( index = dd->index ) > top ) {
 						lua_pop( L, 1 );
 					}
 //					fprintf( stderr, " ** NO MORE KEYS AT %p!", dd->ptr );
-					dd->end = 1;
-					--dd;
-					--depth;
+					--dd, --depth;
 					fprintf( stderr, "\n%s}", &spaces[ 10 - depth ] );
 //fprintf( stderr, "stack after loop pop\n" );
 //lua_istack( L );
-#if 0
-//fprintf( stderr, "dd->ptr:   %p\n", dd->ptr );
-//fprintf( stderr, "dd->index: %d\n", dd->index );
-//fprintf( stderr, "dd->count: %d\n", dd->count );
-//fprintf( stderr, "dd->end:   %d\n", dd->end );
-#endif
 				}
 //lua_istack( L );
 //fprintf( stderr, "\n after move lua_gettop: %d\n", lua_gettop( L ) );
@@ -226,7 +216,6 @@ void lua_dumpstack ( lua_State *L, int *sd ) {
 					dd->count = 2, index = lua_gettop( L );
 				}
 			}
-#endif
 		}
 		fprintf( stderr, "\n" );
 		index--;
