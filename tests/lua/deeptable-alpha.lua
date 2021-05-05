@@ -7,7 +7,6 @@ return {
 ,	d = {
 		weasel = "bacon"
 	, rock = "raida"
----[[
 	, parson = {
 			allen = "tim"
 		, random = "word"
@@ -18,6 +17,5 @@ return {
 			, witch = "senior"
 			}
 		}
---]]
 	}
 }

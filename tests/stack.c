@@ -3,9 +3,11 @@
 
 char *files[] = {
 #if 0
-	"tests/lua/string.lua",
  	"tests/lua/table.lua",
- 	"tests/lua/deeptable.lua",
+ 	"tests/lua/deeptable-alpha.lua",
+ 	"tests/lua/deeptable-mixed.lua",
+	"tests/lua/string.lua",
+ 	"tests/lua/values.lua",
 #endif
  	"tests/lua/multtable.lua",
   NULL
@@ -18,7 +20,7 @@ int main ( int argc, char *argv[] ) {
 	
 	for ( char **f = files; *f; f++ ) {
 		//run a few files and see what you get?
-		fprintf( stderr, "executing code at %s\n", *f );
+		fprintf( stderr, "Executing code at %s\n", *f );
 		if ( !lua_exec_file( L, *f, err, sizeof( err ) ) ) {
 			fprintf( stderr, "Couldn't run lua file %s: %s\n", *f, err );
 			continue;
@@ -30,6 +32,7 @@ int main ( int argc, char *argv[] ) {
 
 		//Wipe it
 		lua_pop( L, lua_gettop( L ) );
+		fprintf( stderr, "\n" );
 	}	
 
 	lua_close( L );

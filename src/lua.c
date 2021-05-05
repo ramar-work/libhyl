@@ -121,9 +121,13 @@ int lua_getarg( ) {
 
 void lua_dumpstack ( lua_State *L, int *sd ) {
 	int top; 
-	struct data { unsigned short count; unsigned short index; } data[64] = {0};
+	struct data { unsigned short count; unsigned short index; char end; const void *ptr; } data[64] = {0};
 	struct data *dd = data;
 	dd->index = 1;
+	dd->count = 1;
+	dd->end = 0;
+	//const char spaces[] = "\t\t\t\t\t\t\t\t\t\t";
+	const char spaces[] = "          ";
 
 	//Return early if no values
 	if ( ( top = lua_gettop( L ) ) == 0 ) {
@@ -131,13 +135,18 @@ void lua_dumpstack ( lua_State *L, int *sd ) {
 		return;
 	}
 
-	fprintf( stderr, "stack values = %d\n", top );
-
 	//Loop through all values on the stack
-	for ( int xx = 0, depth = 0, it, index = 1, ix = 0; index <= top; ix++ ) {
-		if ( !xx ) {
-			fprintf( stderr, "%s", &"\t\t\t\t\t\t\t\t\t\t"[ 10 - depth ] );
-			fprintf( stderr, "%d, %d -> %s ", index, ix, lua_typename( L, lua_type( L, index ) ) ); 
+	for ( int it, depth=0, ix=0, index=lua_gettop( L ); index >= 1; ix++ ) {
+		fprintf( stderr, "%s", &spaces[ 10 - depth ] );
+		fprintf( stderr, "%d, %d -> %s ", index, ix, lua_typename( L, lua_type( L, index ) ) ); 
+#if 0
+fprintf( stderr, "\nptr: %p\n", dd->ptr );
+fprintf( stderr, "count: %d\n", dd->count );
+fprintf( stderr, "index: %d\n", dd->index );
+#endif
+
+		//TODO: Reject keys that aren't a certain type
+		for ( int t = 0, count = dd->count; count > 0; count-- ) {
 			if ( ( it = lua_type( L, index ) ) == LUA_TSTRING )
 				fprintf( stderr, "(%s) %s", lua_typename( L, it ), lua_tostring( L, index ) );
 			else if ( it == LUA_TFUNCTION )
@@ -155,41 +164,39 @@ void lua_dumpstack ( lua_State *L, int *sd ) {
 			else if ( it == LUA_TTABLE ) {
 				fprintf( stderr, "(%s) %p", lua_typename( L, it ), lua_topointer( L, index ) );
 			}
-		}
-		
-		xx = 0;
-		if ( it == LUA_TTABLE || ( depth && --dd->count == 0 ) ) {
-			if ( it == LUA_TTABLE )
+
+			// two values, so index needs to go up once
+			if ( count > 1 ) {
+				index++, t = 1, dd->count -= 2; 
+				fprintf( stderr, " -> " );
+			}
+			else if ( it == LUA_TTABLE ) {
 				lua_pushnil( L );
-			else if ( depth && dd->count == 0 ) {
-				lua_pop( L, 1 ), index = dd->index, top -= 2;
-			}
-			if ( !lua_next( L, index ) ) {
-				--dd, --depth, index = dd->index, xx = 1;
-				//fprintf( stderr, "%d, %d, top: %d\n", dd->depth, dd->count, top );
-				fprintf( stderr, "\n%s}", &"\t\t\t\t\t\t\t\t\t\t"[ 10 - depth ] );
-				//fprintf( stderr, "\n%s}", &"           "[ 10 - depth ] );
-			}
-			else {
-				//fprintf( stderr, "AT START OF TABLE!\n" ); 
-				if ( it == LUA_TTABLE ) {
-					++dd, ++depth, dd->index = index;
+				if ( lua_next( L, index ) != 0 ) {
+					++dd, ++depth, dd->index = index, dd->count = 2, 
+					dd->ptr = lua_topointer( L, index ), index = lua_gettop( L );
+					fprintf( stderr, " ** TABLE AT %p has keys", dd->ptr );
 				}
-#if 0
-for ( int i = 1; i <= 4; i++ ) {
-	fprintf( stderr, "[%d] -> %s", i, lua_typename( L, lua_type( L, i ) ) );
-	if ( lua_type( L, i ) == LUA_TSTRING ) fprintf( stderr, " = %s", lua_tostring( L, i ) );
-	fprintf( stderr, "\n" );
-}
-getchar();
-#endif
-				dd->count = 2, top += 2, index = lua_gettop( L ) - 1;
-				fprintf( stderr, "\n" );
-				continue;
 			}
-			fprintf( stderr, "\n" );
+			else if ( t ) {
+				lua_pop( L, 1 );
+				while ( depth && !lua_next( L, dd->index ) ) {
+					fprintf( stderr, " ** NO MORE KEYS AT %p!", dd->ptr );
+					dd->end = 1;
+					--dd;
+					--depth;
+					index = dd->index;
+					lua_pop( L, 1 );
+					fprintf( stderr, "\n%s}", &spaces[ 10 - depth ] );
+				}
+				if ( depth ) {	
+					fprintf( stderr, " ** MORE KEYS ARE ON TABLE AT %p!", dd->ptr );
+					dd->count = 2, index = lua_gettop( L );
+				}
+			}
 		}
-		index++;
+		fprintf( stderr, "\n" );
+		index--;
 	}
 }
 
