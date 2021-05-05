@@ -119,81 +119,51 @@ int lua_getarg( ) {
 }
 
 
-
-void llds( lua_State *L ) {
-
-}
-
-
 void lua_dumpstack ( lua_State *L, int *sd ) {
-	//Return early if no values
-	if ( lua_gettop( L ) == 0 ) {
-		fprintf( stderr, "%s\n", "No values on stack." );
-		return;
-	}
-
-	fprintf( stderr, "lua_gettop returned: %d\n", lua_gettop( L ) );
-#if 0
-	lua_pushnumber( L, 1 );
-	lua_pushnumber( L, 2 );
-	lua_pushnumber( L, 3 );
-	lua_pushnil( L );
-	lua_pushstring( L, "jammy" );
-#endif
-	//lifo for merging/conversion, fifo for viewing
-	int top = lua_gettop( L ); 
+	int top; 
 	struct data { short depth; short count; short index; } data[64] = {0};
 	struct data *dd = data;
 	dd->index = 1;
 
-int xx = 0;
+	//Return early if no values
+	if ( ( top = lua_gettop( L ) ) == 0 ) {
+		fprintf( stderr, "%s\n", "No values on stack." );
+		return;
+	}
 
-	for ( int it, index = 1, ix = 0; index <= top; ix++ ) {
-		if ( xx ) 
-			xx = 0;
-		else {	
-		fprintf( stderr, "%s", &"\t\t\t\t\t\t\t\t\t\t"[ 10 - dd->depth ] );
-		fprintf( stderr, "%d, %d -> %s ", index, ix, lua_typename( L, lua_type( L, index ) ) ); 
-		if ( ( it = lua_type( L, index ) ) == LUA_TSTRING )
-			fprintf( stderr, "(%s) %s", lua_typename( L, it ), lua_tostring( L, index ) );
-		else if ( it == LUA_TFUNCTION )
-			fprintf( stderr, "(%s) %d", lua_typename( L, it ), index );
-		else if ( it == LUA_TNUMBER )
-			fprintf( stderr, "(%s) %lld", lua_typename( L, it ), (long long)lua_tointeger( L, index ) );
-		else if ( it == LUA_TBOOLEAN)
-			fprintf( stderr, "(%s) %s", lua_typename( L, it ), lua_toboolean( L, index ) ? "T" : "F" );
-		else if ( it == LUA_TTHREAD )
-			fprintf( stderr, "(%s) %p", lua_typename( L, it ), lua_tothread( L, index ) );
-		else if ( it == LUA_TLIGHTUSERDATA || it == LUA_TUSERDATA )
-			fprintf( stderr, "(%s) %p", lua_typename( L, it ), lua_touserdata( L, index ) );
-		else if ( it == LUA_TNIL || it == LUA_TNONE )
-			fprintf( stderr, "(%s) %p", lua_typename( L, it ), lua_topointer( L, index ) );
-		else if ( it == LUA_TTABLE ) {
-			fprintf( stderr, "(%s) %p", lua_typename( L, it ), lua_topointer( L, index ) );
+	//Loop through all values on the stack
+	for ( int xx = 0, it, index = 1, ix = 0; index <= top; ix++ ) {
+		if ( !xx ) {
+			fprintf( stderr, "%s", &"\t\t\t\t\t\t\t\t\t\t"[ 10 - dd->depth ] );
+			fprintf( stderr, "%d, %d -> %s ", index, ix, lua_typename( L, lua_type( L, index ) ) ); 
+			if ( ( it = lua_type( L, index ) ) == LUA_TSTRING )
+				fprintf( stderr, "(%s) %s", lua_typename( L, it ), lua_tostring( L, index ) );
+			else if ( it == LUA_TFUNCTION )
+				fprintf( stderr, "(%s) %d", lua_typename( L, it ), index );
+			else if ( it == LUA_TNUMBER )
+				fprintf( stderr, "(%s) %lld", lua_typename( L, it ), (long long)lua_tointeger( L, index ) );
+			else if ( it == LUA_TBOOLEAN)
+				fprintf( stderr, "(%s) %s", lua_typename( L, it ), lua_toboolean( L, index ) ? "T" : "F" );
+			else if ( it == LUA_TTHREAD )
+				fprintf( stderr, "(%s) %p", lua_typename( L, it ), lua_tothread( L, index ) );
+			else if ( it == LUA_TLIGHTUSERDATA || it == LUA_TUSERDATA )
+				fprintf( stderr, "(%s) %p", lua_typename( L, it ), lua_touserdata( L, index ) );
+			else if ( it == LUA_TNIL || it == LUA_TNONE )
+				fprintf( stderr, "(%s) %p", lua_typename( L, it ), lua_topointer( L, index ) );
+			else if ( it == LUA_TTABLE ) {
+				fprintf( stderr, "(%s) %p", lua_typename( L, it ), lua_topointer( L, index ) );
+			}
 		}
-		}
-		//fprintf( stderr, "i: %d , t: %d\n", index, top );
+		
+		xx = 0;
 		if ( it == LUA_TTABLE || ( dd->depth && --dd->count == 0 ) ) {
-			if ( it == LUA_TTABLE ) {
+			if ( it == LUA_TTABLE )
 				lua_pushnil( L );
+			else if ( dd->depth && dd->count == 0 ) {
+				lua_pop( L, 1 ), index = dd->index, top -= 2;
 			}
-			if ( dd->depth && dd->count == 0 ) {
-				lua_pop( L, 1 );
-				//index -= 2; 
-				index = dd->index;
-				top -= 2;
-			}
-			//fprintf( stderr, "TABLE HIT!\n" );
 			if ( !lua_next( L, index ) ) {
-			#if 0
-				fprintf( stderr, "AT END OF TABLE at %d!\n", index ); 
-				fprintf( stderr, "LAST VALUE AT (%d) %s", 
-					lua_gettop( L ), lua_typename( L, lua_type( L, lua_gettop( L ) ) ) );
-			#endif
-				
-				dd--;
-				index = dd->index;
-				xx = 1;
+				dd--, index = dd->index, xx = 1;
 				//fprintf( stderr, "%d, %d, top: %d\n", dd->depth, dd->count, top );
 				fprintf( stderr, "\n%s}", &"\t\t\t\t\t\t\t\t\t\t"[ 10 - dd->depth ] );
 			}
@@ -201,77 +171,14 @@ int xx = 0;
 				//fprintf( stderr, "AT START OF TABLE!\n" ); 
 				if ( it == LUA_TTABLE ) {
 					int depth = dd->depth;
-					++dd;
-					dd->depth = ++depth;
-					dd->index = index;
+					++dd, dd->depth = ++depth, dd->index = index;
 				}
-				top += 2;
-				dd->count = 2;
+				top += 2, dd->count = 2;
 			}
-			fprintf( stderr, "\n" );//fprintf( stderr, ( i == -1 ) ? "\n" : " -> " );
+			fprintf( stderr, "\n" );
 		}
 		index++;
 	}
-#if 0
-		if ( dd->depth && --dd->count == 0 ) {
-			fprintf( stderr, "\n" );
-			//fprintf( stderr, "iterated through both keys" );
-			lua_pop( L, 1 );
-			index -= 2; 
-			top -= 2;
-			if ( !lua_next( L, index ) ) {
-				fprintf( stderr, "AT END OF TABLE!\n" ); 
-				dd--;
-				index++;	
-			}
-			else {
-				//fprintf( stderr, "INSIDE SAME TABLE!\n" ); 
-				top += 2;
-				dd->count = 2;
-				index++;	
-			}
-			continue;
-		}
-#endif
-
-		#if 0
-			//Add a nil value
-			lua_pushnil( L );
-			int d = ( sd ) ? *sd += 1 : 0;
-
-			//Loop using the negative index
-			while ( lua_next( L, -2 ) != 0 ) {
-				fprintf( stderr, "%s", &"\t\t\t\t\t\t\t\t\t\t"[ 10 - d ] );
-				fprintf( stderr, /*"[%3d:%2d] => "*/ "[%2d] => ", d );
-				for ( int t, i = -2; i < 0; i ++ ) {
-					if ( ( t = lua_type( L, i ) ) == LUA_TSTRING )
-						fprintf( stderr, "(%s) %s", lua_typename( L, t ), lua_tostring( L, i ) );
-					else if ( t == LUA_TFUNCTION )
-						fprintf( stderr, "(%s) %d", lua_typename( L, t ), i );
-					else if ( t == LUA_TNUMBER )
-						fprintf( stderr, "(%s) %lld", lua_typename( L, t ), (long long)lua_tointeger( L, i ) );
-					else if ( t == LUA_TBOOLEAN)
-						fprintf( stderr, "(%s) %s", lua_typename( L, t ), lua_toboolean( L, i ) ? "T" : "F" );
-					else if ( t == LUA_TTHREAD )
-						fprintf( stderr, "(%s) %p", lua_typename( L, t ), lua_tothread( L, i ) );
-					else if ( t == LUA_TLIGHTUSERDATA || t == LUA_TUSERDATA )
-						fprintf( stderr, "(%s) %p", lua_typename( L, t ), lua_touserdata( L, i ) );
-					else if ( t == LUA_TNIL || t == LUA_TNONE )
-						fprintf( stderr, "(%s) %p", lua_typename( L, t ), lua_topointer( L, i ) );
-					else if ( t == LUA_TTABLE ) {
-						fprintf( stderr, "(%s) %p\n", lua_typename( L, t ), lua_topointer( L, i ) );
-						lua_dumpstack( L, &d );
-						fprintf( stderr, "%s", &"\t\t\t\t\t\t\t\t\t\t"[ 10 - d ] );
-						fprintf( stderr, "}" );
-					}
-					fprintf( stderr, ( i == -1 ) ? "\n" : " -> " );
-				}
-				lua_pop( L, 1 );
-			}
-			( sd ) ? *sd -= 1 : 0;
-		}
-	}
-		#endif
 }
 
 

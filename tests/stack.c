@@ -2,10 +2,13 @@
 #include "../src/lua.h"
 
 char *files[] = {
-	"tests/lua/string.lua"
-,	"tests/lua/table.lua"
-,	"tests/lua/deeptable.lua"
-, NULL
+	"tests/lua/string.lua",
+ 	"tests/lua/table.lua",
+#if 0
+ 	"tests/lua/deeptable.lua",
+ 	"tests/lua/multtable.lua",
+#endif
+  NULL
 };
 
 int main ( int argc, char *argv[] ) {
@@ -23,8 +26,6 @@ int main ( int argc, char *argv[] ) {
 
 		//Dump it	
 		lua_dumpstack( L, NULL );
-		lua_dumpstack( L, NULL );
-		//lua_stackdump( L );
 
 		//Wipe it
 		int a = lua_gettop( L );
