@@ -811,55 +811,44 @@ const int filter
 	
 		//Open the file that will execute the model
 		snprintf( mpath, sizeof( mpath ), "%s/%s", conn->hconfig->dir, (*m)->file );
-		fprintf( stderr, "Executing model %s\n", mpath );
-
-#if 1
-fprintf( stderr, "==== BEGINNING OF INVOCATION\n" );
-lua_dumpstack( L );
+		//fprintf( stderr, "Executing model %s\n", mpath );
 
 		//...
 		if ( !lua_exec_file( L, mpath, err, sizeof( err ) ) ) {
 			return http_error( res, 500, "%s", err );
 		}
 
-		//Debug dump of whatever model is there
-fprintf( stderr, "==== NEW MODEL\n" );
-		lua_dumpstack( L );
-		//lua_stackdump( L );
-
 		//Get name of model file in question 
 		memcpy( msymname, &(*m)->file[4], strlen( (*m)->file ) - 8 );
 
 		//Get a count of the values which came from the model
 		tcount += ccount = lua_gettop( L );
-		fprintf( stderr, "executed model contains %d values\n", ccount );
+		//fprintf( stderr, "executed model contains %d values\n", ccount );
 
-fprintf( stderr, "==== USE %s MODEL\n", tcount > 1 ? "PREVIOUS" : "ONE" );
 		if ( tcount > 1 ) {
 			lua_getglobal( L, mkey );
-			lua_dumpstack( L );
-			fprintf( stderr, "gettop: %d\n", lua_gettop( L ) );
-			//a merge function will be the easiest way to do this
-			for ( int i = 0, t = lua_gettop( L ); i < t; i++ ) {
-fprintf( stderr, "set global" );
-				lua_setglobal( L, mkey );
-			}
+			lua_merge( L );	
+			lua_setglobal( L, mkey );
 		} 
 		else if ( ccount ) {
 			lua_setglobal( L, mkey );
 		}
-fprintf( stderr, "==== STACK AFTER GLOBAL SET\n" );
-		lua_dumpstack( L );
-		getchar();
-#endif
+	}
+	
+	//Convert to zTable
+	lua_getglobal( L, mkey );
+	lua_dumpstack( L );
+getchar();
+
+	if ( lua_isnil( L, -1 ) )
+		lua_pop( L, 1 );
+	else if ( !lua_to_ztable( L, 1, zmodel ) ) {
+		return http_error( res, 500, "Error in model conversion." );
 	}
 
-fprintf( stderr, "==== FINAL MODEL\n" );
-		lua_getglobal( L, mkey );
-		if ( lua_isnil( L, -1 ) ) {
-			lua_pop( L, 1 );
-		}
-lua_dumpstack( L );
+	lt_dump( zmodel );
+
+
 getchar();
 return http_error( res, 200, "No error, stop here." );
 
