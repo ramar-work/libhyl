@@ -27,6 +27,7 @@ void lua_dumpstack ( lua_State * );
 int ztable_to_lua ( lua_State *, zTable * ) ;
 int lua_to_ztable ( lua_State *, int, zTable * ) ;
 int lua_exec_file( lua_State *, const char *, char *, int );
+int lua_merge ( lua_State * );
 
 #define lua_stackdump(L) lua_dumpstack(L)
 
