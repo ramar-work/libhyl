@@ -200,43 +200,27 @@ void lua_dumpstack ( lua_State *L ) {
 //Takes all items in a table and merges them into 
 //a single table (removes whatever was there)
 int lua_merge( lua_State *L ) {
-	const char spaces[] = /*"\t\t\t\t\t\t\t\t\t\t"*/"          ";
 	const int top = lua_gettop( L );
-	struct data { unsigned short count, index, tinsert, tpull; } 
-		data[64] = {0}, *dd = data;
-	dd->count = 1;
+	struct data { unsigned short index, tinsert, tpull; } data[64] = {0}, *dd = data;
 
 	//Return early if no values
-	if ( top < 0 ) {
-		fprintf( stderr, "%s\n", 
-			( top == 0 ) ? "No values on stack." :"Need more than 1 value to merge." 
-		);
-		return 0;
+	if ( top < 2 ) {
+		return 1;
 	}
 
 	//Push a blank table at the beginning
-	lua_newtable( L );
-	lua_insert( L, 1 );
-	lua_dumpstack( L );
-	//int pos = top + 1;
-
-	int deep = 1;
+	lua_newtable( L ), lua_insert( L, 1 );
 
 	//set some defaults
-	dd->index = 1;//numeric indices of what's in table
-	dd->tinsert = 1;
+	dd->index = 1, dd->tinsert = 1;
 
 	//Loop through all values on the stack
-	for ( int it, depth=0, index=top + 1; index > 1; ) {
-		fprintf( stderr, "starting with %d\n", index );
+	for ( int kt, it, depth = 0, index = top + 1; index > 1; ) {
 		if ( !depth ) {
 			if ( ( it = lua_type( L, index ) ) == LUA_TTABLE ) {
 				lua_pushnil( L );
-fprintf( stderr, "top level has a table...\n" );
-lua_istack(L);
-				if ( lua_next( L, index ) ) {
+				if ( lua_next( L, index ) )
 					dd++, dd->tinsert = 1, dd->index = 1, dd->tpull = index, depth++;
-				}
 				else {
 					lua_pushnumber( L, dd->index );
 					lua_newtable( L );
@@ -246,12 +230,9 @@ lua_istack(L);
 			}
 			else {
 				lua_pushnumber( L, dd->index );
-				if ( ( it = lua_type( L, index ) ) == LUA_TSTRING ) {
-					fprintf( stderr, "pushing string %s\n", lua_tostring( L, index ) );
+				if ( ( it = lua_type( L, index ) ) == LUA_TSTRING )
 					lua_pushstring( L, lua_tostring( L, index ) );
-				}
 				else if ( it == LUA_TNUMBER ) {
-					fprintf( stderr, "pushing int %lld\n", lua_tointeger( L, index ) );
 					lua_pushinteger( L, lua_tointeger( L, index ) );
 				}
 				lua_settable( L, dd->tinsert );
@@ -259,175 +240,25 @@ lua_istack(L);
 			}
 		}
 		else {
-			//if neither value is a table, insert the value at index - 1 before index - 1
-			int vt = lua_type( L, -1 ) ; //value
-			int kt = lua_type( L, -2 ) ; //key
-#if 0
-fprintf( stderr, "top of mid table\n" );
-lua_istack( L );
-#endif
-			//---if ( vt != LUA_TTABLE ) {
-				//Add the key again to maintain lua_next behavior
-				if ( kt == LUA_TNUMBER )
-					lua_pushnumber( L, lua_tonumber( L, -2 ) );
-				else if ( kt == LUA_TSTRING )
-					lua_pushstring( L, lua_tostring( L, -2 ) );
-				else {
-					fprintf( stderr, "Invalid key type: %s\n", lua_typename( L, kt ) );
-					//wipe what was added and return the stack to normal...
-					return 0;
-				}
-#if 0
-fprintf( stderr, "dd->tpull: %d\n", dd->tpull );
-fprintf( stderr, "dd->tinsert: %d\n", dd->tinsert );
-lua_istack( L );
-lua_istack( L );
-#endif
-				lua_insert( L, dd->tpull + 1 );
-				lua_settable( L, dd->tinsert );
-
-				if ( !lua_next( L, dd->tpull ) )
-					lua_pop( L, 1 ), dd--, depth--;
-				else {
-					fprintf( stderr, "new kv contains a table.\n" );
-				}
-#if 1
+			//Add the key again to maintain lua_next behavior
+			if ( ( kt = lua_type( L, -2 ) ) == LUA_TNUMBER )
+				lua_pushnumber( L, lua_tonumber( L, -2 ) );
+			else if ( kt == LUA_TSTRING )
+				lua_pushstring( L, lua_tostring( L, -2 ) );
+			else {
+				//fprintf( stderr, "Invalid key type: %s\n", lua_typename( L, kt ) );
+				fprintf( stderr, "ERROR: HANDLE OTHER KEY TYPES!\n" );
+				return 0;
 			}
-#else
-	#if 0
-	fprintf( stderr, "end of mid table\n" );
-	lua_istack( L );
-	#endif
-				//---}
-	#if 0
-				else {
-					int pull = lua_gettop( L );
-				#if 1
-					//let's say that the other side is a table?
-					fprintf( stderr, "value was a table, so get it's keys" );
-					fprintf( stderr, "%d, %d\n", pull, index );
-	lua_pushnil( L );
-	lua_istack( L );
-	getchar();
-				//if not at end, increment dd, set table pos to new value, and do something
-					if ( lua_next( L, pull ) ) {
-						dd++, dd->tinsert = 1, dd->index = 1, dd->tpull = pull, depth++;
-					}
-					//if at end, decrement dd, set table pos to old value, and do something
-					else {
-						dd--, depth--;
-					/*
-						lua_pushnumber( L, dd->index );
-						lua_newtable( L );
-						lua_settable( L, dd->tinsert );
-					*/
-					}
-	lua_istack( L );
-	getchar();
-				#endif
-				}
-	#endif
+
+			lua_insert( L, dd->tpull + 1 ), lua_settable( L, dd->tinsert );
+
+			if ( !lua_next( L, dd->tpull ) ) {
+				lua_pop( L, 1 ), dd--, depth--;
+			}
 		}
-#endif
-		if ( !depth ) {
-			index--;
-		}
+		( !depth ) ? index-- : 0;
 	}
-
-
-fprintf( stderr, "so done...\n" );
-lua_dumpstack( L );
-
-#if 0
-		for ( int t = 0, count = dd->count; count > 0; ) {
-			//push the index of the thing on the stack
-			it = lua_type( L, index );
-			if ( !depth && ( it != LUA_TTABLE ) ) {
-				fprintf( stderr, "at stack top, pushing int %d\n", ix );
-				lua_pushnumber( L, ix );
-			}
-			
-			if ( it == LUA_TSTRING ) {
-				fprintf( stderr, "pushing string %s\n", lua_tostring( L, index ) );
-				lua_pushstring( L, lua_tostring( L, index ) );
-			}
-			else if ( it == LUA_TNUMBER ) {
-				fprintf( stderr, "pushing int %lld\n", lua_tointeger( L, index ) );
-				lua_pushinteger( L, lua_tointeger( L, index ) );
-			}
-			else if ( it == LUA_TTABLE ) {
-				//Only push tables greater than the lowest depth, because
-				//we're merging
-				if ( !depth ) {
-					fprintf( stderr, "Got table and need the values, but nothing else." );
-					lua_pushnil( L );
-				}
-				else {
-					fprintf( stderr, "pushing table %p\n", lua_topointer( L, index ) );
-					lua_newtable( L ); /*lua_topointer( L, index )*/
-					pos = lua_gettop( L );
-				}
-
-				if ( lua_next( L, index ) ) {
-					++dd, ++depth;
-					dd->count = 2;
-					dd->index = index;	
-					index = lua_gettop( L );
-				}
-				else {
-					--dd, --depth;
-					if ( depth ) {
-						dd->count = 2;
-					}	
-				}
-			}
-
-fprintf( stderr, "Stack before depth set..." );
-lua_istack(L);
-getchar();
-			//Set the table if either at the value in a key value loop
-			//or if at the top level, and going through the stack			
-			if ( --count == 0 && !depth ) {
-fprintf( stderr, "setting the table.\n" );
-				lua_settable( L, pos );
-			}
-
-fprintf( stderr, "Stack after all operations..." );
-lua_istack(L);
-fprintf( stderr, "dd->count = %d\n", dd->count );
-fprintf( stderr, "dd->index = %d\n", dd->index );
-fprintf( stderr, "index     = %d\n", index );
-getchar();
-#if 0
-			//Handle keys
-			if ( count > 1 )
-				index++, t = 1, dd->count -= 2;
-			//Handle new tables
-			else if ( it == LUA_TTABLE ) {
-				lua_pushnil( L );
-//lua_istack( L );
-				if ( lua_next( L, index ) != 0 ) {
-					++dd, ++depth; 
-					dd->index = index, dd->count = 2, index = lua_gettop( L ) - 1;
-				}
-//lua_istack( L );
-			}
-			//Handle situations in which a table is on the "other side"
-			else if ( t ) {
-				lua_pop( L, 1 );
-				//TODO: This is quite gnarly... Maybe clarify a bit? 
-				while ( depth && !lua_next( L, dd->index ) ) {
-					( ( index = dd->index ) > top ) ? lua_pop( L, 1 ) : 0;
-					--dd, --depth, fprintf( stderr, "\n%s}", &spaces[ 10 - depth ] );
-				}
-				( depth ) ? dd->count = 2, index = lua_gettop( L ) - 1 : 0;
-			}
-			getchar();
-#endif
-		}
-		index--;
-	}
-#endif
 
 	return 1;
 }

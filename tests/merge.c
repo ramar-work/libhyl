@@ -2,11 +2,11 @@
 #include "../src/lua.h"
 
 char *files[] = {
- 	//"tests/lua/values.lua",
- 	//"tests/lua/deeptable-alpha.lua",
- 	//"tests/lua/deeptable-mixed.lua",
+ 	"tests/lua/values.lua",
+ 	"tests/lua/deeptable-alpha.lua",
+ 	"tests/lua/deeptable-mixed.lua",
  	"tests/lua/multtable-simple.lua",
- 	//"tests/lua/multtable.lua",
+ 	"tests/lua/multtable.lua",
   NULL
 };
 
@@ -23,8 +23,14 @@ int main ( int argc, char *argv[] ) {
 			continue;
 		}
 
-		//Dump it	
-		lua_merge( L );
+		//Dump the stack and merge 
+		int status = lua_merge( L );
+		//some should fail
+
+		//Dump the stack	
+		if ( status ) {
+			lua_dumpstack( L );
+		}
 
 		//Wipe it
 		lua_pop( L, lua_gettop( L ) );
