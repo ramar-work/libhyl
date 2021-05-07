@@ -57,6 +57,12 @@ struct mvc_t {
 };
 
 
+
+#if 0
+
+#endif
+
+
 int run_lua_buffer( lua_State *L, const char *buffer ) {
 	//Load a buffer	
 	luaL_loadbuffer( L, buffer, strlen( buffer ), "make-read-only-function" );
@@ -787,47 +793,11 @@ const int filter
 		return http_error( res, 500, "%s", "Failed to initialize Lua environment." );
 	}
 
-#if 1
 	//Get the actual path of the config file and run it
 	snprintf( cpath, sizeof( cpath ) - 1, "%s/%s", conn->hconfig->dir, "config.lua" );
 	if ( !load_lua_config( L, cpath, zconfig, err, sizeof( err ) ) ) {
 		return http_error( res, 500, "%s\n", err );
 	}
-
-return 0;
-#else
-	//Get the actual path of the config file...
-	snprintf( cpath, sizeof( cpath ) - 1, "%s/%s", conn->hconfig->dir, "config.lua" );
-
-	//If this fails, do something
-	if ( !lt_init( zconfig, NULL, 1024 ) ) {
-		return http_error( res, 500, "%s", "lt_init out of memory." );
-	}
-
-	//Open the configuration file
-	if ( !lua_exec_file( L, cpath, err, sizeof( err ) ) ) {
-		lt_free( zconfig );
-		lua_close( L );
-		return http_error( res, 500, "%s", err );
-	}
-
-	//If it's anything but a Lua table, we're in trouble
-	if ( !lua_istable( L, 1 ) ) {
-		lt_free( zconfig );
-		lua_close( L );
-		return http_error( res, 500, "%s", err );
-	}
-
-	//Convert the Lua values to real values for extraction.
-	if ( !lua_to_ztable( L, 1, zconfig ) ) {
-		lt_free( zconfig );
-		lua_close( L );
-		return http_error( res, 500, "%s", "Failed to convert Lua to zTable" );
-	}
-
-	//Destroy loaded table here...
-	lua_pop( L, 1 );
-#endif
 
 	//Need to delegate to static handler when request points to one of the static paths
 	if ( path_is_static( zconfig, req->path ) ) {
