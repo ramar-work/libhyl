@@ -12,6 +12,11 @@ return {
 ,	routes = {
 		["/"] = { model = "single", views = { "single" } }
 
+	,	["{aa,bb,cc}"] = { 
+			model = { "z", "y", "x" }
+		, views = { "changed" }
+		}
+
 		-- Let's just see if a model will sustain changes
 	,	["series"] = { 
 			model = { "z", "y", "x" }

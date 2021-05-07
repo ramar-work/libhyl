@@ -696,6 +696,10 @@ const int filter
 	int clen = 0;
 	unsigned char *content = NULL;
 
+
+
+
+
 	//Initialize
 	if ( !( L = luaL_newstate() ) ) {
 		return http_error( res, 500, "%s", "Failed to initialize Lua environment." );
@@ -760,7 +764,16 @@ const int filter
 	
 	//Loop through the routes
 	struct mvc_t pp = {0};
+
+	//....
+	int ii=0;
+	fprintf( stdout, "route received %s\n", req->path ); 
 	for ( struct iroute_t **lroutes = p.iroute_tlist; *lroutes; lroutes++ ) {
+		fprintf( stdout, "route %d => %s\n", ++ii, (*lroutes)->route );
+	}
+
+	for ( struct iroute_t **lroutes = p.iroute_tlist; *lroutes; lroutes++ ) {
+		fprintf( stdout, "Checking route %s\n", (*lroutes)->route );
 		if ( route_resolve( req->path, (*lroutes)->route ) ) {
 			croute = lt_copy_by_index( zroutes, (*lroutes)->index );
 			lt_exec_complex( croute, 1, croute->count, &pp, make_mvc_list );
@@ -784,6 +797,20 @@ const int filter
 	lt_free( zroutes );
 	free( zroutes );
 	lt_free( zconfig );
+
+//show me the matched route, and yep
+	content = malloc( 1024 );
+	snprintf( (char *)content, 1023, "Got path: %s", req->path );
+	
+	res->clen = strlen( (char *)content );  
+	http_set_status( res, 200 ); 
+	http_set_ctype( res, "text/html" );
+	http_set_content( res, content, res->clen ); 
+	//Return the finished message if we got this far
+	if ( !http_finalize_response( res, err, sizeof(err) ) ) {
+		return http_error( res, 500, err );
+	}
+return 0;	
 
 	//Parse http here
 	if ( !prepare_http_fields( zhttp, req, err, sizeof( err ) ) ) {
@@ -825,8 +852,13 @@ const int filter
 		tcount += ccount = lua_gettop( L );
 		//fprintf( stderr, "executed model contains %d values\n", ccount );
 
+		//If there is more than one thing returned, it needs to be merged...
+
 		if ( tcount > 1 ) {
 			lua_getglobal( L, mkey );
+			if ( lua_isnil( L, -1 ) ) {
+				lua_pop( L, 1 );
+			}
 			lua_merge( L );	
 			lua_setglobal( L, mkey );
 		} 
@@ -835,30 +867,21 @@ const int filter
 		}
 	}
 	
-	//Convert to zTable
-	lua_getglobal( L, mkey );
-	lua_dumpstack( L );
-getchar();
-
-	if ( lua_isnil( L, -1 ) )
+	//Convert to zTable (TODO: not handling cases in which there is no model...)
+	if ( lua_getglobal( L, mkey ) && lua_isnil( L, -1 ) )
 		lua_pop( L, 1 );
-	else if ( !lua_to_ztable( L, 1, zmodel ) ) {
-		return http_error( res, 500, "Error in model conversion." );
+	else { 
+		if ( !lt_init( zmodel, NULL, 512 ) )
+			return http_error( res, 500, "Could not allocate table for model." );
+		if ( !lua_to_ztable( L, 1, zmodel ) ) {
+			return http_error( res, 500, "Error in model conversion." );
+		}
+		lt_lock( zmodel );
 	}
-
-	lt_dump( zmodel );
-
-
-getchar();
-return http_error( res, 200, "No error, stop here." );
-
-	//Lock the model for hashing's sake
-	lt_lock( zmodel );
 
 	//Load all views
 	for ( struct imvc_t **v = pp.imvc_tlist; *v; v++ ) {
-		const char *f = (*v)->file;
-		if ( *f == 'v' ) {
+		if ( *(*v)->file == 'v' ) {
 			int len = 0, renlen = 0;
 			char vpath[ 2048 ] = {0};
 			unsigned char *src, *render;
@@ -866,9 +889,8 @@ return http_error( res, 200, "No error, stop here." );
 			zrender_set_default_dialect( rz );
 			zrender_set_fetchdata( rz, zmodel );
 
-			snprintf( vpath, sizeof( vpath ), "%s/%s", conn->hconfig->dir, f );
-fprintf( stderr, "vp: %s\n", vpath );
-#if 1
+			snprintf( vpath, sizeof( vpath ), "%s/%s", conn->hconfig->dir, (*v)->file );
+			//fprintf( stderr, "Loading view at: %s\n", vpath );
 			if ( !( src = read_file( vpath, &len, err, sizeof( err ) )	) || !len ) {
 				return http_error( res, 500, "rf: %s", err );
 			}
@@ -876,19 +898,15 @@ fprintf( stderr, "vp: %s\n", vpath );
 			if ( !( render = zrender_render( rz, src, strlen((char *)src), &renlen ) ) ) {
 				return http_error( res, 500, "%s", "Renderer error." );
 			}
+
 			zhttp_append_to_uint8t( &content, &clen, render, renlen ); 
 			zrender_free( rz );
 			free( src );
-#endif
 		}
 	}
 
 	//Destroy mvc list
 	free_mvc_list( (void **)pp.imvc_tlist );
-
-	//Model can contain other things like status, content-type, etc
-	//Certain keys will cause other things to happen
-	//... 
 
 	//Set needed info for the response structure
 	res->clen = clen;
