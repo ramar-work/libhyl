@@ -926,7 +926,7 @@ const int filter
 	char **rset = NULL;
 	const char *db, *fqdn, *title, *root, *rpath, *rroute;
 	zTable *zconfig = &zc, *zmodel = &zm, *zhttp = &zh; 
-	zTable *zroutes = NULL, *croute = NULL;
+	zTable *zroutes = NULL, *croute = NULL, *zroute = NULL;
 	lua_State *L = NULL;
 	int clen = 0;
 	unsigned char *content = NULL;
@@ -989,9 +989,6 @@ const int filter
 	}
 
 	//If a route was found, break it up
-	//routes should be an array of char *'s
-	//add this to croute?
-	zTable *zroute = NULL;
 	if ( !( zroute = getproutes( rpath, rroute ) ) ) {
 		return http_error( res, 500, "Couldn't initialize route map.\n" );
 	}
@@ -1008,22 +1005,6 @@ const int filter
 	if ( !prepare_http_fields( zhttp, req, err, sizeof( err ) ) ) {
 		return http_error( res, 500, "Failed to prepare HTTP for consumption." ); 
 	}
-
-#if 0
-//show me the matched route, and yep
-	content = malloc( 1024 );
-	snprintf( (char *)content, 1023, "Got path: %s", rpath );
-	
-	res->clen = strlen( (char *)content );  
-	http_set_status( res, 200 ); 
-	http_set_ctype( res, "text/html" );
-	http_set_content( res, content, res->clen ); 
-	//Return the finished message if we got this far
-	if ( !http_finalize_response( res, err, sizeof(err) ) ) {
-		return http_error( res, 500, err );
-	}
-return 0;
-#endif
 
 	//Load standard libraries
 	if ( !lua_loadlibs( L, functions, 1 ) ) {
@@ -1079,9 +1060,10 @@ return 0;
 			}
 		}
 	}
-	
-	//Convert to zTable (TODO: not handling cases in which there is no model...)
-	if ( lua_getglobal( L, mkey ) && lua_isnil( L, -1 ) )
+
+	//Push whatever model is there
+	lua_getglobal( L, mkey ); 
+	if ( lua_isnil( L, -1 ) )
 		lua_pop( L, 1 );
 	else { 
 		if ( !lt_init( zmodel, NULL, 512 ) )
