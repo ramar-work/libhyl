@@ -525,7 +525,6 @@ static int make_mvc_list ( zKeyval *kv, int i, void *p ) {
 }
 
 
-
 void free_mvc_list ( void **list ) {
 	for ( void **l = list; *l; l++ ) {
 		free( *l );
@@ -682,6 +681,39 @@ zTable * prepare_http_fields ( zTable *t, struct HTTPBody *req, char *err, int e
 }
 
 
+static char * getpath( char *rpath ) {
+	char *r = malloc( strlen( rpath ) + 1 );
+	memset( r, 0, strlen( rpath ) + 1 );
+	for ( char *p = r, *path = rpath; *path && *path != '?'; ) *(p++) = *(path++);
+	return r;
+}
+
+
+zTable * getproutes( char *npath, const char *route ) {
+	zWalker w = {0}, w2 = {0};
+	char *path = ++npath, **routes = { NULL };
+	int rlen = 0;
+	
+	//Loop twice to set up the map
+	for ( char stub[1024], id[1024]; strwalk( &w, path, "/" ); ) {
+		//write the length of the block between '/'
+		memset( stub, 0, sizeof(stub) );
+		//memcpy( zz, w.src, ( w.chr == '/' ) ? w.size - 1 : w.size );
+		//add_item( &routes, z = zhttp_dupstr( zz ), char *, &rlen );
+	#if 0
+		for ( .... ) {
+			//if there is an equal, most likely it's an id
+			//if not, it's a number
+			break;
+		}
+		//copy the value (stub) to value in table
+	#endif
+	}
+
+	return NULL;
+}
+
+
 
 //The entry point for a Lua application
 const int filter 
@@ -689,8 +721,9 @@ const int filter
 
 	//Define variables and error positions...
 	zTable zc, zm = {0}, zh = {0};
-	char err[ 128 ] = {0}, cpath[ 2048 ] = {0}; 
-	const char *db, *fqdn, *title, *root;
+	char err[ 128 ] = {0}, cpath[ 2048 ] = {0};
+	char **rset = NULL;
+	const char *db, *fqdn, *title, *root, *rpath, *rroute;
 	zTable *zconfig = &zc, *zmodel = &zm, *zhttp = &zh; 
 	zTable *zroutes = NULL, *croute = NULL;
 	lua_State *L = NULL;
@@ -763,19 +796,15 @@ const int filter
 	struct mvc_t pp = {0};
 
 	//req->path needs to be modified to return just the path without the ?
-	//query string needs to be turned into its own thing
-	//route also needs to be turned into something else
-
-	//....
-	int ii=0;
-	fprintf( stdout, "route received %s\n", req->path ); 
-	for ( struct iroute_t **lroutes = p.iroute_tlist; *lroutes; lroutes++ ) {
-		fprintf( stdout, "route %d => %s\n", ++ii, (*lroutes)->route );
+	if ( !( rpath = getpath( req->path ) ) ) {
+		return http_error( res, 500, "%s", "Failed to extract path." );
 	}
-
+fprintf( stderr, "%s\n", req->path );
+fprintf( stderr, "'%s'\n", rpath );
+return 0;
+	//....
 	for ( struct iroute_t **lroutes = p.iroute_tlist; *lroutes; lroutes++ ) {
-		fprintf( stdout, "Checking route %s\n", (*lroutes)->route );
-		if ( route_resolve( req->path, (*lroutes)->route ) ) {
+		if ( ( rroute = route_resolve( rpath, (*lroutes)->route ) ) ) {
 			croute = lt_copy_by_index( zroutes, (*lroutes)->index );
 			lt_exec_complex( croute, 1, croute->count, &pp, make_mvc_list );
 			break;
@@ -788,8 +817,12 @@ const int filter
 		lt_free( zroutes );
 		lt_free( zconfig );
 		lua_close( L );
-		return http_error( res, 404, "Couldn't find path at %s\n", req->path );
+		return http_error( res, 404, "Couldn't find path at %s\n", rpath );
 	}
+
+	//If a route was found, break it up
+	//routes should be an array of char *'s
+	//getproutes( rpath, rroute );	
 
 	//Destroy anything having to do with routes 
 	lt_free( croute );
@@ -799,9 +832,14 @@ const int filter
 	free( zroutes );
 	lt_free( zconfig );
 
+	//Parse http here
+	if ( !prepare_http_fields( zhttp, req, err, sizeof( err ) ) ) {
+		return http_error( res, 500, "Failed to prepare HTTP for consumption." ); 
+	}
+
 //show me the matched route, and yep
 	content = malloc( 1024 );
-	snprintf( (char *)content, 1023, "Got path: %s", req->path );
+	snprintf( (char *)content, 1023, "Got path: %s", rpath );
 	
 	res->clen = strlen( (char *)content );  
 	http_set_status( res, 200 ); 
@@ -811,12 +849,7 @@ const int filter
 	if ( !http_finalize_response( res, err, sizeof(err) ) ) {
 		return http_error( res, 500, err );
 	}
-return 0;	
-
-	//Parse http here
-	if ( !prepare_http_fields( zhttp, req, err, sizeof( err ) ) ) {
-		return http_error( res, 500, "Failed to prepare HTTP for consumption." ); 
-	}
+return 0;
 
 	//Load standard libraries
 	if ( !lua_loadlibs( L, functions, 1 ) ) {
