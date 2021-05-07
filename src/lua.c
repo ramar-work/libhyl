@@ -807,42 +807,6 @@ void dump_records( struct HTTPRecord **r ) {
 }
 
 
-//Go through all of the different fields and pass things off
-zTable * prepare_http_fields ( zTable *t, struct HTTPBody *req, char *err, int errlen ) {
-	//Loop through all things
-	const char *str[] = { "headers", "url", "body" };
-	struct HTTPRecord **ii[] = { req->headers, req->url, req->body };
-
-	//Initialize said table
-	if ( !lt_init( t, NULL, 512 ) ) {
-		return NULL;
-	} 
-
-	for ( int i = 0; i < 3; i++ ) {
-		lt_addtextkey( t, str[ i ] );
-		lt_descend( t );
-		for ( struct HTTPRecord **r = ii[i]; r && *r; r++ ) {
-		#if 0
-			fprintf( stderr, "\t%p: %s -> ", *r, (*r)->field ); 
-			write( 2, (*r)->value, (*r)->size );
-			write( 2, "\n", 1 );
-		#endif
-			lt_addtextkey( t, (*r)->field );
-			lt_addblobvalue( t, (*r)->value, (*r)->size );
-			lt_finalize( t );
-		}
-		lt_ascend( t );
-	}
-
-	//Finally add a function (that should translate to Lua)
-	lt_addtextkey( t, "__newindex" );
-	lt_addtextvalue( t, "function (t,k,v) error( 'attempt to update a read-only table.', 2 ) end" );
-	//If not, you'll have to use a function, but how would that translate?
-	//would it be a C function or not?
-
-	//Return a table
-	return t;
-}
 
 
 static char * getpath( char *rpath ) {
@@ -853,6 +817,20 @@ static char * getpath( char *rpath ) {
 }
 
 
+
+//Both of these functions return zTables, and this is heavy on memory and does a useless context switch
+//Doing it all in Lua makes more sense...
+#if 0
+struct lua_readonly_t { 
+	const char *name;
+	int (*exec)( lua_State *, const char *, struct HTTPBody * );	
+} lua_readonly[] = {
+	{ "http", init_lua_http }
+, { "routes", init_lua_routes }
+, { "session", init_lua_session }
+, { NULL }
+}
+#else
 zTable * getproutes( const char *npath, const char *route ) {
 	zWalker w = {0}, w2 = {0};
 	const char *active, *path = ++npath, *resolved = ++route; 
@@ -914,6 +892,40 @@ zTable * getproutes( const char *npath, const char *route ) {
 	return t;
 }
 
+
+//Go through all of the different fields and pass things off
+zTable * prepare_http_fields ( zTable *t, struct HTTPBody *req, char *err, int errlen ) {
+	//Loop through all things
+	const char *str[] = { "headers", "url", "body" };
+	struct HTTPRecord **ii[] = { req->headers, req->url, req->body };
+
+	//Initialize said table
+	if ( !lt_init( t, NULL, 512 ) ) {
+		return NULL;
+	} 
+
+	for ( int i = 0; i < 3; i++ ) {
+		lt_addtextkey( t, str[ i ] );
+		lt_descend( t );
+		for ( struct HTTPRecord **r = ii[i]; r && *r; r++ ) {
+		#if 0
+			fprintf( stderr, "\t%p: %s -> ", *r, (*r)->field ); 
+			write( 2, (*r)->value, (*r)->size );
+			write( 2, "\n", 1 );
+		#endif
+			lt_addtextkey( t, (*r)->field );
+			lt_addblobvalue( t, (*r)->value, (*r)->size );
+			lt_finalize( t );
+		}
+		lt_ascend( t );
+	}
+	
+	lt_dump( t );
+
+	//Return a table
+	return t;
+}
+#endif
 
 
 //The entry point for a Lua application
