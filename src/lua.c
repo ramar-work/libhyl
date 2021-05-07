@@ -49,6 +49,8 @@ struct mvc_t {
 	int flen, type;
 	struct imvc_t {
 		const char file[ 2048 ];
+		const char base[ 128 ];
+		const char ext[ 16 ];
 		//leave some space here...
 		//const char *dir;
 	} **imvc_tlist;
@@ -515,6 +517,10 @@ static int make_mvc_list ( zKeyval *kv, int i, void *p ) {
 		memset( imvc, 0, sizeof( struct imvc_t ) );
 		snprintf( (char *)imvc->file, sizeof(imvc->file) - 1, "%s/%s.%s", 
 			tt->mset->dir, kv->value.v.vchar, tt->mset->ext );
+		snprintf( (char *)imvc->base, sizeof(imvc->base) - 1, "%s.%s", 
+			kv->value.v.vchar, tt->mset->ext );
+		snprintf( (char *)imvc->ext, sizeof(imvc->ext) - 1, "%s", 
+			tt->mset->ext );
 		add_item( &tt->imvc_tlist, imvc, struct imvc_t *, &tt->flen );
 	}
 
@@ -534,25 +540,34 @@ void free_mvc_list ( void **list ) {
 
 
 
-#if 0
-int load_lua_model( lua_State *L, const char *f, char **err, int errlen ) {
+#if 1
+int load_lua_config( lua_State *L, const char *f, zTable *ct, char *err, int errlen ) {
+	//If this fails, do something
+	if ( !lt_init( ct, NULL, 1024 ) ) {
+		snprintf( err, errlen, "Couldn't initalize configuration table." );
+		return 0;
+	}
+
 	//Open the configuration file
-	if ( !lua_exec_file( L, "config.lua", err, errlen ) ) {
-		return http_error( res, 500, "%s", err );
+	if ( !lua_exec_file( L, f, err, errlen ) ) {
+		return 0;
 	}
 
 	//If it's anything but a Lua table, we're in trouble
 	if ( !lua_istable( L, 1 ) ) {
-		return http_error( res, 500, "%s", err );
+		snprintf( err, errlen, "Configuration is not a Lua table." );
+		return 0;
 	}
 
 	//Convert the Lua values to real values for extraction.
-	if ( !lua_to_ztable( L, 1, zconfig ) ) {
-		return http_error( res, 500, "%s", "Failed to convert Lua to zTable" );
+	if ( !lua_to_ztable( L, 1, ct ) ) {
+		snprintf( err, errlen, "Failed to convert Lua to zTable" );
+		return 0;
 	}
 
 	//Destroy loaded table here...
 	lua_pop( L, 1 );
+	return 1;
 }
 #endif
 
@@ -689,28 +704,65 @@ static char * getpath( char *rpath ) {
 }
 
 
-zTable * getproutes( char *npath, const char *route ) {
+zTable * getproutes( const char *npath, const char *route ) {
 	zWalker w = {0}, w2 = {0};
-	char *path = ++npath, **routes = { NULL };
-	int rlen = 0;
+	const char *active, *path = ++npath, *resolved = ++route; 
+	const char rname[] = "route";
+	char **routes = { NULL };
+	int index = 0, rlen = 0;
+
+	zTable *t = malloc( sizeof( zTable ) );
+	memset( t, 0, sizeof( zTable ) );
+	lt_init( t, NULL, 256 ); 
+
+	lt_addtextkey( t, rname );
+	lt_descend( t );
 	
 	//Loop twice to set up the map
 	for ( char stub[1024], id[1024]; strwalk( &w, path, "/" ); ) {
 		//write the length of the block between '/'
 		memset( stub, 0, sizeof(stub) );
-		//memcpy( zz, w.src, ( w.chr == '/' ) ? w.size - 1 : w.size );
+		memcpy( stub, w.src, ( w.chr == '/' ) ? w.size - 1 : w.size );
 		//add_item( &routes, z = zhttp_dupstr( zz ), char *, &rlen );
-	#if 0
-		for ( .... ) {
+	#if 1
+		for ( ; strwalk( &w2, resolved, "/" ); ) {
+			int size = ( w2.chr == '/' ) ? w2.size - 1 : w2.size;
 			//if there is an equal, most likely it's an id
-			//if not, it's a number
+			if ( *w2.src != ':' )
+				lt_addintkey( t, ++index );	
+			else {
+				//Find the key/id name
+				for ( char *p = (char *)w2.src, *b = id; *p && ( *p	!= '=' || *p != '/' ); ) {
+					*(b++) = *(p++);
+				}
+				//Check that id is not active, because that's a built-in
+				if ( strcmp( id, "active" ) == 0 ) {
+					lt_free( t );
+					free( t );
+					return NULL;
+				}
+				
+				//Add a numeric key first, then a text key
+				lt_addintkey( t, ++index );	
+				lt_addtextvalue( t, stub );	
+				lt_finalize( t );
+				lt_addtextkey( t, id );
+			}
 			break;
 		}
-		//copy the value (stub) to value in table
 	#endif
+		//copy the value (stub) to value in table
+		lt_addtextvalue( t, stub );
+		lt_finalize( t );
+		active = &path[ w.pos ];
 	}
 
-	return NULL;
+	lt_addtextkey( t, "active" );
+	lt_addtextvalue( t, active );
+	lt_finalize( t );
+	lt_ascend( t );
+	lt_lock( t );
+	return t;
 }
 
 
@@ -735,10 +787,14 @@ const int filter
 		return http_error( res, 500, "%s", "Failed to initialize Lua environment." );
 	}
 
-#if 0
-	if ( !load_lua_model( L, "config.lua", zconfig, err, sizeof( err ) ) ) {
+#if 1
+	//Get the actual path of the config file and run it
+	snprintf( cpath, sizeof( cpath ) - 1, "%s/%s", conn->hconfig->dir, "config.lua" );
+	if ( !load_lua_config( L, cpath, zconfig, err, sizeof( err ) ) ) {
 		return http_error( res, 500, "%s\n", err );
 	}
+
+return 0;
 #else
 	//Get the actual path of the config file...
 	snprintf( cpath, sizeof( cpath ) - 1, "%s/%s", conn->hconfig->dir, "config.lua" );
@@ -799,9 +855,7 @@ const int filter
 	if ( !( rpath = getpath( req->path ) ) ) {
 		return http_error( res, 500, "%s", "Failed to extract path." );
 	}
-fprintf( stderr, "%s\n", req->path );
-fprintf( stderr, "'%s'\n", rpath );
-return 0;
+
 	//....
 	for ( struct iroute_t **lroutes = p.iroute_tlist; *lroutes; lroutes++ ) {
 		if ( ( rroute = route_resolve( rpath, (*lroutes)->route ) ) ) {
@@ -822,7 +876,11 @@ return 0;
 
 	//If a route was found, break it up
 	//routes should be an array of char *'s
-	//getproutes( rpath, rroute );	
+	//add this to croute?
+	zTable *zroute = NULL;
+	if ( !( zroute = getproutes( rpath, rroute ) ) ) {
+		return http_error( res, 500, "Couldn't initialize route map.\n" );
+	}
 
 	//Destroy anything having to do with routes 
 	lt_free( croute );
@@ -837,6 +895,7 @@ return 0;
 		return http_error( res, 500, "Failed to prepare HTTP for consumption." ); 
 	}
 
+#if 0
 //show me the matched route, and yep
 	content = malloc( 1024 );
 	snprintf( (char *)content, 1023, "Got path: %s", rpath );
@@ -850,6 +909,7 @@ return 0;
 		return http_error( res, 500, err );
 	}
 return 0;
+#endif
 
 	//Load standard libraries
 	if ( !lua_loadlibs( L, functions, 1 ) ) {
@@ -860,6 +920,9 @@ return 0;
 	if ( !make_read_only( L, "http" ) ) {
 		return http_error( res, 500, "Failed to make libs read-only." ); 
 	}
+
+	//Get the active route
+	char *active_route = lt_text( zroute, "route.active" );
 	
 	//Execute each model
 	int ccount = 0, tcount = 0; 
@@ -868,36 +931,38 @@ return 0;
 		char err[ 2048 ] = { 0 }, msymname[ 1024 ] = { 0 }, mpath[ 2048 ] = {0};
 
 		//Check for a file
-		if ( *(*m)->file != 'a' ) continue;
-	
-		//Open the file that will execute the model
-		snprintf( mpath, sizeof( mpath ), "%s/%s", conn->hconfig->dir, (*m)->file );
-		//fprintf( stderr, "Executing model %s\n", mpath );
-
-		//...
-		if ( !lua_exec_file( L, mpath, err, sizeof( err ) ) ) {
-			return http_error( res, 500, "%s", err );
-		}
-
-		//Get name of model file in question 
-		memcpy( msymname, &(*m)->file[4], strlen( (*m)->file ) - 8 );
-
-		//Get a count of the values which came from the model
-		tcount += ccount = lua_gettop( L );
-		//fprintf( stderr, "executed model contains %d values\n", ccount );
-
-		//If there is more than one thing returned, it needs to be merged...
-
-		if ( tcount > 1 ) {
-			lua_getglobal( L, mkey );
-			if ( lua_isnil( L, -1 ) ) {
-				lua_pop( L, 1 );
+		if ( *(*m)->file == 'a' ) {
+			//Open the file that will execute the model
+			if ( *(*m)->base != '@' )
+				snprintf( mpath, sizeof( mpath ), "%s/%s", conn->hconfig->dir, (*m)->file );
+			else {
+				snprintf( mpath, sizeof( mpath ), "%s/%s/%s.%s", conn->hconfig->dir, "app", active_route, (*m)->ext );
 			}
-			lua_merge( L );	
-			lua_setglobal( L, mkey );
-		} 
-		else if ( ccount ) {
-			lua_setglobal( L, mkey );
+
+			//...
+			fprintf( stderr, "Executing model %s\n", mpath );
+			if ( !lua_exec_file( L, mpath, err, sizeof( err ) ) ) {
+				return http_error( res, 500, "%s", err );
+			}
+
+			//Get name of model file in question 
+			memcpy( msymname, &(*m)->file[4], strlen( (*m)->file ) - 8 );
+
+			//Get a count of the values which came from the model
+			tcount += ccount = lua_gettop( L );
+
+			//Merge previous models
+			if ( tcount > 1 ) {
+				lua_getglobal( L, mkey );
+				if ( lua_isnil( L, -1 ) ) {
+					lua_pop( L, 1 );
+				}
+				lua_merge( L );	
+				lua_setglobal( L, mkey );
+			} 
+			else if ( ccount ) {
+				lua_setglobal( L, mkey );
+			}
 		}
 	}
 	
@@ -922,11 +987,16 @@ return 0;
 			zRender * rz = zrender_init();
 			zrender_set_default_dialect( rz );
 			zrender_set_fetchdata( rz, zmodel );
+			
+			if ( *(*v)->base != '@' )
+				snprintf( vpath, sizeof( vpath ), "%s/%s", conn->hconfig->dir, (*v)->file );
+			else {
+				snprintf( vpath, sizeof( vpath ), "%s/%s/%s.%s", conn->hconfig->dir, "views", active_route, (*v)->ext );
+			}
 
-			snprintf( vpath, sizeof( vpath ), "%s/%s", conn->hconfig->dir, (*v)->file );
-			//fprintf( stderr, "Loading view at: %s\n", vpath );
+			fprintf( stderr, "Loading view at: %s\n", vpath );
 			if ( !( src = read_file( vpath, &len, err, sizeof( err ) )	) || !len ) {
-				return http_error( res, 500, "rf: %s", err );
+				return http_error( res, 500, "Error opening view '%s': %s", vpath, err );
 			}
 
 			if ( !( render = zrender_render( rz, src, strlen((char *)src), &renlen ) ) ) {

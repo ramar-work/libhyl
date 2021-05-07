@@ -13,7 +13,7 @@ return {
 		["/"] = { model = "single", views = { "single" } }
 
 	,	["{aa,bb,cc}"] = { 
-			model = { "z", "y", "x" }
+			model = { "z", "@", "x" }
 		, views = { "changed" }
 		}
 	
