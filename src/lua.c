@@ -476,6 +476,8 @@ static int make_route_list ( zKeyval *kv, int i, void *p ) {
 	if ( kv->key.type == ZTABLE_TXT && !is_reserved( kv->key.v.vchar ) ) {
 		char key[ 2048 ] = { 0 };
 		lt_get_full_key( tt->src, i, (unsigned char *)&key, sizeof( key ) );
+		//replace all '.' with '/'
+		for ( char *k = key; *k; k++ ) ( *k == '.' ) ? *k = '/' : 0;	
 		struct iroute_t *ii = malloc( sizeof( struct iroute_t ) );
 		ii->index = i, ii->route = zhttp_dupstr( &key[ routes_wordlen ] ), *ii->route = '/';
 		add_item( &tt->iroute_tlist, ii, struct iroute_t *, &tt->iroute_tlen );
@@ -487,8 +489,7 @@ static int make_route_list ( zKeyval *kv, int i, void *p ) {
 
 static void free_route_list ( struct iroute_t **list ) {
 	for ( struct iroute_t **l = list; *l; l++ ) {
-		free( (*l)->route );
-		free( *l );
+		free( (*l)->route ), free( *l );
 	}
 	free( list );
 }
@@ -696,10 +697,6 @@ const int filter
 	int clen = 0;
 	unsigned char *content = NULL;
 
-
-
-
-
 	//Initialize
 	if ( !( L = luaL_newstate() ) ) {
 		return http_error( res, 500, "%s", "Failed to initialize Lua environment." );
@@ -764,6 +761,10 @@ const int filter
 	
 	//Loop through the routes
 	struct mvc_t pp = {0};
+
+	//req->path needs to be modified to return just the path without the ?
+	//query string needs to be turned into its own thing
+	//route also needs to be turned into something else
 
 	//....
 	int ii=0;

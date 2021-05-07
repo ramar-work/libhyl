@@ -4,7 +4,7 @@
 return {
 	static = {
 		"/assets"
-	, "/robots.txt"
+	, "/ROBOTS.TXT"
 	}
 ,	db = "gb"
 , title = "localhost"
@@ -15,6 +15,19 @@ return {
 	,	["{aa,bb,cc}"] = { 
 			model = { "z", "y", "x" }
 		, views = { "changed" }
+		}
+	
+	, ["complex"] = {
+			model = { "z", "y", "x" }
+		, views = { "this" }
+		, ["{high,low,mid}"] = {
+				model = { "z", "y", "x" }
+			, views = { "boom" }
+			, [ "{xx,yy,zz}" ] = {
+					model = { "z", "y", "x" }
+				, views = { "@" }
+				}
+			}
 		}
 
 		-- Let's just see if a model will sustain changes
