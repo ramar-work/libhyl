@@ -34,6 +34,8 @@ static struct mvcmeta_t {
 	{ "app", "model", "lua" }
 ,	{ "sql", "query", "sql" }
 ,	{ "views", "views", "tpl" }
+,	{ NULL, "content-type", NULL }
+//,	{ NULL, "inherit", NULL }
 };
 
 
@@ -46,21 +48,76 @@ struct route_t {
 
 struct mvc_t {
 	struct mvcmeta_t *mset;
-	int flen, type;
+	int flen, type; 
+	int depth;   //track the depth, so you know when to stop iterating
+	//int inherit; //a keyword
+
+	int model;
+	int view;
+	int query;
+	
+
+	const char ctype[ 128 ];
 	struct imvc_t {
-		const char file[ 2048 ];
-		const char base[ 128 ];
-		const char ext[ 16 ];
+		const char file[ 2048 ], base[ 128 ], ext[ 16 ];
 		//leave some space here...
 		//const char *dir;
 	} **imvc_tlist;
 };
 
 
-
 #if 0
+- you can check the top level parent for certain keywords
 
+- the easiest way to do this right now is to only extract the 
+  level you want 
+
+
+get_level_one
+
+
+static int tfind_nexti( zKeyval *kv, int i, void *p ) {
+	int *t = (int *)p;
+	t[0] = ( kv->value.type != t[1] ) ? 0 : i;  
+	return 0;
+}
+
+
+//Return every thing at a specific level
+zTable * lt_level ( zTable *t, const char *key, int level ) {
+
+	//Define stuff
+	int *cptr, *chain = NULL;
+	int size, ip[2] = { 0, type }; 
+
+	//Get the hash first
+	if ( ( ip[0] = lt_geti( t, key ) ) == -1 ) {
+		return NULL;
+	}
+
+	//Get count of elements
+	if ( ( size = lt_counta( t, ip[0] ) ) < 1 ) {
+		return NULL;
+	}
+
+	//Allocate a big array for each of them
+	chain = malloc( sizeof( int ) * size );	
+	if ( !chain || !memset( chain, 0, sizeof( int ) * size ) ) {
+		return NULL;
+	} 
+
+	//Get all the ints
+	cptr = chain;
+	for ( int ix = *ip; !lt_exec_complex( t, ix, t->count, &ip, tfind_nexti ); ix++ ) {
+		if ( ip[0] > 0 ) {
+			*cptr = ix, ++cptr;
+		}
+	}
+	
+	return chain;
+}
 #endif
+
 
 
 int run_lua_buffer( lua_State *L, const char *buffer ) {
@@ -503,19 +560,104 @@ static void free_route_list ( struct iroute_t **list ) {
 }
 
 
-
+#if 0
+//Create a list of resources (an alternate version of this will inherit everything) 
 static int make_mvc_list ( zKeyval *kv, int i, void *p ) {
 	struct mvc_t *tt = (struct mvc_t *)p;
 	char *key = NULL;
+	int ctype = 0;
+
+	if ( kv->key.type == ZTABLE_TXT ) {
+		fprintf( stderr, "In table, got key: %s\n", kv->key.v.vchar );
+	}
 
 	if ( kv->key.type == ZTABLE_TXT && is_reserved( key = kv->key.v.vchar ) ) {
-		if ( !strcmp( key, "model" ) )
-			tt->mset = &mvcmeta[ 0 ], tt->type = kv->value.type;
-		else if ( !strcmp( key, "query" ) )
-			tt->mset = &mvcmeta[ 1 ], tt->type = kv->value.type;
-		else if ( !strcmp( key, "view" ) || !strcmp( key, "views" ) ) {
-			tt->mset = &mvcmeta[ 2 ], tt->type = kv->value.type;
+	#if 0
+		for ( int i = 0; i < sizeof( mvcmeta ) / sizeof( struct mvcmeta_t ); i++ ) {
+			if ( strcmp( key, mvcmeta[i].reserved ) == 0 ) {
+				tt->mset = &mvcmeta[ i ], tt->type = kv->value.type;
+				ctype = ( strcmp( key, "content-type" ) ) ? 1 : 0;
+				break;
+			}
 		}
+	#else
+		if ( !strcmp( key, "model" ) )
+			tt->mset = &mvcmeta[ 0 ], tt->type = kv->value.type, tt->model++;
+		else if ( !strcmp( key, "query" ) )
+			tt->mset = &mvcmeta[ 1 ], tt->type = kv->value.type, tt->query++;
+		else if ( !strcmp( key, "content-type" ) )
+			tt->mset = &mvcmeta[ 3 ], tt->type = kv->value.type, ctype = 1;
+		else if ( !strcmp( key, "view" ) || !strcmp( key, "views" ) ) {
+			tt->mset = &mvcmeta[ 2 ], tt->type = kv->value.type, tt->view++;
+		}
+	#endif
+	}
+
+	//write content type
+	if ( tt->mset && ctype ) {
+		memcpy( (char *)tt->ctype, kv->value.v.vchar, strlen( kv->value.v.vchar ) );
+		return 1;
+	}
+
+	if ( tt->mset && kv->value.type == ZTABLE_TXT && memchr( "mvq", *tt->mset->reserved, 3 ) ) {
+		struct imvc_t *imvc = malloc( sizeof( struct imvc_t ) );
+		memset( imvc, 0, sizeof( struct imvc_t ) );
+		snprintf( (char *)imvc->file, sizeof(imvc->file) - 1, "%s/%s.%s", 
+			tt->mset->dir, kv->value.v.vchar, tt->mset->ext );
+		snprintf( (char *)imvc->base, sizeof(imvc->base) - 1, "%s.%s", 
+			kv->value.v.vchar, tt->mset->ext );
+		snprintf( (char *)imvc->ext, sizeof(imvc->ext) - 1, "%s", 
+			tt->mset->ext );
+		add_item( &tt->imvc_tlist, imvc, struct imvc_t *, &tt->flen );
+	}
+
+	if ( kv->key.type == ZTABLE_TRM || tt->type == ZTABLE_TXT ) {
+		tt->mset = NULL;	
+		tt->depth--;
+	}
+	return 1;	
+}
+
+			for ( int i = 0; i < sizeof( mvcmeta ) / sizeof( struct mvcmeta_t ); i++ ) {
+				if ( strcmp( key, mvcmeta[i].reserved ) == 0 ) {
+					tt->mset = &mvcmeta[ i ], tt->type = kv->value.type;
+					ctype = ( strcmp( key, "content-type" ) ) ? 1 : 0;
+					break;
+				}
+			}
+#endif
+
+
+
+//Create a list of resources (an alternate version of this will inherit everything) 
+static int make_mvc_list ( zKeyval *kv, int i, void *p ) {
+	struct mvc_t *tt = (struct mvc_t *)p;
+	char *key = NULL;
+	int ctype = 0;
+
+	if ( tt->depth == 1 ) {
+		if ( kv->key.type == ZTABLE_TXT && is_reserved( key = kv->key.v.vchar ) ) {
+			if ( !strcmp( key, "model" ) )
+				tt->mset = &mvcmeta[ 0 ], tt->type = kv->value.type, tt->model = 1;
+			else if ( !strcmp( key, "query" ) )
+				tt->mset = &mvcmeta[ 1 ], tt->type = kv->value.type, tt->query = 1;
+			else if ( !strcmp( key, "content-type" ) )
+				tt->mset = &mvcmeta[ 3 ], tt->type = kv->value.type, ctype = 1;
+			else if ( !strcmp( key, "view" ) || !strcmp( key, "views" ) ) {
+				tt->mset = &mvcmeta[ 2 ], tt->type = kv->value.type, tt->view = 1;
+			}
+		}
+
+		//write content type
+		if ( tt->mset && ctype ) {
+			memcpy( (char *)tt->ctype, kv->value.v.vchar, strlen( kv->value.v.vchar ) );
+			return 1;
+		}
+	}
+
+	if ( kv->value.type == ZTABLE_TBL ) {
+		tt->depth++;
+		return 1;
 	}
 
 	if ( tt->mset && kv->value.type == ZTABLE_TXT && memchr( "mvq", *tt->mset->reserved, 3 ) ) {
@@ -533,6 +675,9 @@ static int make_mvc_list ( zKeyval *kv, int i, void *p ) {
 	if ( kv->key.type == ZTABLE_TRM || tt->type == ZTABLE_TXT ) {
 		tt->mset = NULL;	
 	}
+	if ( kv->key.type == ZTABLE_TRM ) {
+		tt->depth--;
+	}
 	return 1;	
 }
 
@@ -546,7 +691,6 @@ void free_mvc_list ( void **list ) {
 
 
 
-#if 1
 int load_lua_config( lua_State *L, const char *f, zTable *ct, char *err, int errlen ) {
 	//If this fails, do something
 	if ( !lt_init( ct, NULL, 1024 ) ) {
@@ -575,7 +719,6 @@ int load_lua_config( lua_State *L, const char *f, zTable *ct, char *err, int err
 	lua_pop( L, 1 );
 	return 1;
 }
-#endif
 
 
 
@@ -820,6 +963,7 @@ const int filter
 	
 	//Loop through the routes
 	struct mvc_t pp = {0};
+	pp.depth = 1;
 
 	//req->path needs to be modified to return just the path without the ?
 	if ( !( rpath = getpath( req->path ) ) ) {
@@ -896,7 +1040,7 @@ return 0;
 	
 	//Execute each model
 	int ccount = 0, tcount = 0; 
-	for ( struct imvc_t **m = pp.imvc_tlist; *m; m++ ) {
+	for ( struct imvc_t **m = pp.imvc_tlist; m && *m; m++ ) {
 		//Define
 		char err[ 2048 ] = { 0 }, msymname[ 1024 ] = { 0 }, mpath[ 2048 ] = {0};
 
