@@ -817,23 +817,9 @@ static char * getpath( char *rpath ) {
 }
 
 
-
-//Both of these functions return zTables, and this is heavy on memory and does a useless context switch
-//Doing it all in Lua makes more sense...
-#if 0
-struct lua_readonly_t { 
-	const char *name;
-	int (*exec)( lua_State *, const char *, struct HTTPBody * );	
-} lua_readonly[] = {
-	{ "http", init_lua_http }
-, { "routes", init_lua_routes }
-, { "session", init_lua_session }
-, { NULL }
-}
-#else
-zTable * getproutes( const char *npath, const char *route ) {
+zTable * init_lua_routes ( lua_State *L, struct HTTPBody *req, const char *apath, const char *route ) {
 	zWalker w = {0}, w2 = {0};
-	const char *active, *path = ++npath, *resolved = ++route; 
+	const char *active, *path = ++apath, *resolved = ++route; 
 	const char rname[] = "route";
 	char **routes = { NULL };
 	int index = 0, rlen = 0;
@@ -894,7 +880,7 @@ zTable * getproutes( const char *npath, const char *route ) {
 
 
 //Go through all of the different fields and pass things off
-zTable * prepare_http_fields ( zTable *t, struct HTTPBody *req, char *err, int errlen ) {
+int init_lua_http ( struct HTTPBody *req, const char *apath, const char *route ) {
 	//Loop through all things
 	const char *str[] = { "headers", "url", "body" };
 	struct HTTPRecord **ii[] = { req->headers, req->url, req->body };
@@ -925,7 +911,22 @@ zTable * prepare_http_fields ( zTable *t, struct HTTPBody *req, char *err, int e
 	//Return a table
 	return t;
 }
+
+//Both of these functions return zTables, and this is heavy on memory and does a useless context switch
+//Doing it all in Lua makes more sense...
+#if 1
+struct lua_readonly_t { 
+	const char *name;
+	int (*exec)( lua_State *, struct HTTPBody *, const char *, const char * );	
+} lua_readonly[] = {
+	{ "http", init_lua_http }
+, { "routes", init_lua_routes }
+, { "session", init_lua_session }
+, { NULL }
+}
 #endif
+
+
 
 
 //The entry point for a Lua application
@@ -1013,10 +1014,15 @@ const int filter
 	free( zroutes );
 	lt_free( zconfig );
 
+#if 0
+	//Loop through the structure and add read-only structures to Lua, 
+	//you could also add the libraries, but that is a different method
+#else
 	//Parse http here
 	if ( !prepare_http_fields( zhttp, req, err, sizeof( err ) ) ) {
 		return http_error( res, 500, "Failed to prepare HTTP for consumption." ); 
 	}
+#endif
 
 	//Load standard libraries
 	if ( !lua_loadlibs( L, functions, 1 ) ) {
