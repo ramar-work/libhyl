@@ -5,13 +5,10 @@
 	fprintf( stderr, __VA_ARGS__ )
 
 const char libname[] = "lua";
-
+const char rname[] = "route";
+const char def[] = "default";
 const char confname[] = "config.lua";
-
-void lua_stackdump ( lua_State *L );
-
 static const char mkey[] = "model";
-
 static const char rkey[] = "routes";
 
 //TODO: This is an incredibly difficult way to make things read only
@@ -806,6 +803,7 @@ static char * getpath( char *rpath ) {
 }
 
 
+#if 0
 static int setroutes ( struct luadata_t *l ) {
 	struct route_t p = { 0 };
 	struct mvc_t pp = {0};
@@ -855,34 +853,40 @@ static int setroutes ( struct luadata_t *l ) {
 	free_route_list( p.iroute_tlist );	
 	return 1;
 }
+#endif
 
 
 int init_lua_routes ( struct luadata_t *l ) {
 	zWalker w = {0}, w2 = {0};
 	const char *active, *path = l->apath + 1, *resolved = l->rroute + 1;
-	const char rname[] = "route";
 	char **routes = { NULL };
-	int index = 0, rlen = 0;
-#if 0
-	zTable *t = malloc( sizeof( zTable ) );
-	memset( t, 0, sizeof( zTable ) );
-	lt_init( t, NULL, 256 ); 
+	int index = 0, rlen = 0, pos = 1;
+	
+	//Add a table.
+	lua_newtable( l->state );
 
-	lt_addtextkey( t, rname );
-	lt_descend( t );
+	//Handle root requests
+	if ( !*path ) {
+		lua_pushinteger( l->state, 1 ); 
+		lua_pushstring( l->state, def ); 
+		lua_settable( l->state, pos );
+		lua_pushstring( l->state, "active" ); 
+		lua_pushstring( l->state, def ); 
+		lua_settable( l->state, pos );
+		l->aroute = def;
+		return 1;
+	} 
 	
 	//Loop twice to set up the map
 	for ( char stub[1024], id[1024]; strwalk( &w, path, "/" ); ) {
 		//write the length of the block between '/'
 		memset( stub, 0, sizeof(stub) );
 		memcpy( stub, w.src, ( w.chr == '/' ) ? w.size - 1 : w.size );
-		//add_item( &routes, z = zhttp_dupstr( zz ), char *, &rlen );
-	#if 1
 		for ( ; strwalk( &w2, resolved, "/" ); ) {
 			int size = ( w2.chr == '/' ) ? w2.size - 1 : w2.size;
 			//if there is an equal, most likely it's an id
 			if ( *w2.src != ':' )
-				lt_addintkey( t, ++index );	
+				lua_pushinteger( l->state, ++index );	
 			else {
 				//Find the key/id name
 				for ( char *p = (char *)w2.src, *b = id; *p && ( *p	!= '=' || *p != '/' ); ) {
@@ -890,34 +894,29 @@ int init_lua_routes ( struct luadata_t *l ) {
 				}
 				//Check that id is not active, because that's a built-in
 				if ( strcmp( id, "active" ) == 0 ) {
-					lt_free( t );
-					free( t );
 					return 0;
 				}
 				
 				//Add a numeric key first, then a text key
-				lt_addintkey( t, ++index );	
-				lt_addtextvalue( t, stub );	
-				lt_finalize( t );
-				lt_addtextkey( t, id );
+				lua_pushinteger( l->state, ++index );
+				lua_pushstring( l->state, stub );
+				lua_settable( l->state, pos );
+				lua_pushstring( l->state, id );
 			}
 			break;
 		}
-	#endif
 		//copy the value (stub) to value in table
-		lt_addtextvalue( t, stub );
-		lt_finalize( t );
+		lua_pushstring( l->state, stub );
+		lua_settable( l->state, pos );
 		active = &path[ w.pos ];
 	}
 
-	lt_addtextkey( t, "active" );
-	lt_addtextvalue( t, active );
-	lt_finalize( t );
-	lt_ascend( t );
-	lt_lock( t );
-	return t;
-#endif
-	return 0;
+	fprintf( stderr, "active route: %s\n", active );
+	lua_pushstring( l->state, "active" );
+	lua_pushstring( l->state, active );
+	lua_settable( l->state, pos );
+	l->aroute = active;
+	return 1;
 }
 
 
@@ -926,32 +925,24 @@ int init_lua_http ( struct luadata_t *l ) {
 	//Loop through all things
 	const char *str[] = { "headers", "url", "body" };
 	struct HTTPRecord **ii[] = { l->req->headers, l->req->url, l->req->body };
-#if 0
-	//Initialize said table
-	if ( !lt_init( t, NULL, 512 ) ) {
-		return NULL;
-	} 
+#if 1
+	//Add one table for all structures
+	lua_newtable( l->state );
 
-	for ( int i = 0; i < 3; i++ ) {
-		lt_addtextkey( t, str[ i ] );
-		lt_descend( t );
+	//Then add key for others
+	for ( int pos=3, i = 0; i < 3; i++ ) {
+		lua_pushstring( l->state, str[i] ), lua_newtable( l->state );
 		for ( struct HTTPRecord **r = ii[i]; r && *r; r++ ) {
-		#if 0
-			fprintf( stderr, "\t%p: %s -> ", *r, (*r)->field ); 
-			write( 2, (*r)->value, (*r)->size );
-			write( 2, "\n", 1 );
-		#endif
-			lt_addtextkey( t, (*r)->field );
-			lt_addblobvalue( t, (*r)->value, (*r)->size );
-			lt_finalize( t );
+			lua_pushstring( l->state, (*r)->field );
+			lua_pushlstring( l->state, ( char * )(*r)->value, (*r)->size );
+			lua_settable( l->state, pos );
 		}
-		lt_ascend( t );
+		lua_settable( l->state, 1 );
 	}
-	
-	lt_dump( t );
+
+	//Set global name
 #endif
-	//Return a table
-	return 0;
+	return 1;
 }
 
 //Both of these functions return zTables, and this is heavy on memory and does a useless context switch
@@ -963,11 +954,20 @@ struct lua_readonly_t {
 	//int (*exec)( lua_State *, struct HTTPBody *, const char *, const char * );	
 } lua_readonly[] = {
 	{ "http", init_lua_http }
-, { "routes", init_lua_routes }
+, { "route", init_lua_routes }
 , { NULL }
 };
 #endif
 
+#if 0
+//consider this instead, but it will be extern...
+struct lua_lib_t {
+	...
+} lua_libs[] = {
+	{ "some_lib", libs }
+, { NULL }
+};
+#endif
 
 
 
@@ -1040,7 +1040,8 @@ return 1;
 	zTable *croute = NULL;
 	ld.pp.depth = 1;
 	for ( struct iroute_t **lroutes = p.iroute_tlist; *lroutes; lroutes++ ) {
-		if ( ( ld.rroute = route_resolve( ld.apath, (*lroutes)->route ) ) ) {
+		if ( route_resolve( ld.apath, (*lroutes)->route ) ) {
+			ld.rroute = zhttp_dupstr( (*lroutes)->route );
 			croute = lt_copy_by_index( ld.zroutes, (*lroutes)->index );
 			lt_exec_complex( croute, 1, croute->count, &ld.pp, make_mvc_list );
 			break;
@@ -1076,9 +1077,11 @@ return 1;
 	//Loop through the structure and add read-only structures to Lua, 
 	//you could also add the libraries, but that is a different method
 	for ( struct lua_readonly_t *t = lua_readonly; t->name; t++ ) {
+		fprintf( stderr, "adding '%s'\n", t->name );
 		if ( !t->exec( &ld ) ) {
 			return http_error( req, ld.status, ld.err );
 		}
+		lua_setglobal( ld.state, t->name );
 	}
 #else
 	//Parse http here

@@ -10,7 +10,7 @@ return {
 , title = "localhost"
 , root = ""
 ,	routes = {
-		["/"] = { model = "single", views = { "single" } }
+		["/"] = { model = { "diagnostic", "single" }, views = { "single" } }
 
 	,	["{aa,bb,cc}"] = { 
 			model = { "z", "@", "x" }
@@ -25,7 +25,7 @@ return {
 			, views = { "boom" }
 			, [ "{xx,yy,zz}" ] = {
 					model = { "z", "y", "x" }
-				, views = { "@" }
+				, views = { "end" }
 				}
 			}
 		}
