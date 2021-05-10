@@ -39,11 +39,11 @@
 
 static const unsigned int lt_hash = 31;
 
-zhInner __ltComplex = { LT_DUMP_LONG, LT_VERBOSE, NULL, 0 };
+zhInner __ltComplex = { LT_DUMP_LONG, LT_VERBOSE, NULL, LT_DEVICE, 0 };
  
-zhInner __ltHistoric = { LT_DUMP_SHORT, LT_VERBOSE, NULL, 0 };
+zhInner __ltHistoric = { LT_DUMP_SHORT, LT_VERBOSE, NULL, LT_DEVICE, 0 };
 
-zhInner __ltSimple = { LT_DUMP_SHORT, LT_CONDENSED, NULL, 0 };
+zhInner __ltSimple = { LT_DUMP_SHORT, LT_CONDENSED, NULL, LT_DEVICE, 0 };
 
 static const char __lt_fmt[] =
 	"[%-5d] (%d) %s";
@@ -73,18 +73,18 @@ static const char *lt_errors[] = {
 };
 
 static const char *lt_polymorph_type_names[] = {
-	[ZTABLE_NON] = "uninitialized", 
-	[ZTABLE_INT] = "integer",     
-	[ZTABLE_FLT] = "float",     
-	[ZTABLE_TXT] = "text",     
-	[ZTABLE_BLB] = "blob",     
+	[ZTABLE_NON] = "uninitialized",
+	[ZTABLE_INT] = "integer",
+	[ZTABLE_FLT] = "float",
+	[ZTABLE_TXT] = "text",
+	[ZTABLE_BLB] = "blob",
 #ifdef ZTABLE_NUL
-	[ZTABLE_NUL] = "null",     
+	[ZTABLE_NUL] = "null",
 #endif
-	[ZTABLE_USR] = "userdata",     
-	[ZTABLE_TBL] = "table",     
-	[ZTABLE_TRM] = "terminator",     
-	[ZTABLE_NOD] = "node",     
+	[ZTABLE_USR] = "userdata",
+	[ZTABLE_TBL] = "table",
+	[ZTABLE_TRM] = "terminator",
+	[ZTABLE_NOD] = "node",
 };
 
 static const zhRecord nul = { 0 };
@@ -921,7 +921,7 @@ void print_value( zKeyval *kv ) {
 
 
 //Print a set of values at a particular index
-static void lt_printindex ( zKeyval *tt, int showkey, int ind ) {
+static void lt_printindex ( zKeyval *tt, int device, int showkey, int ind ) {
 	int w = 0;
 	int maxlen = (showkey) ? 24576 : lt_buflen;
   char b[maxlen]; 
@@ -987,8 +987,8 @@ static void lt_printindex ( zKeyval *tt, int showkey, int ind ) {
 		}
 	}
 
-	write( LT_DEVICE, b, w );
-	write( LT_DEVICE, "\n", 1 );
+	write( device, b, w );
+	write( device, "\n", 1 );
 }	
 
 
@@ -1000,9 +1000,9 @@ int __lt_dump ( zKeyval *kv, int i, void *p ) {
 		char buf[ 128 ] = { 0 };
 		const char *space = &__lt_ws[ 100 - pp->level ];
 		int l = snprintf( buf, sizeof(buf), __lt_fmt, i, pp->level, space ); 
-		write( LT_DEVICE, buf, l );
+		write( pp->fd, buf, l );
 	}
-	lt_printindex( kv, pp->dumptype, pp->level );
+	lt_printindex( kv, pp->fd, pp->dumptype, pp->level );
 	pp->level += (vt == ZTABLE_NUL) ? -1 : (vt == ZTABLE_TBL) ? 1 : 0;
 	return 1;
 }

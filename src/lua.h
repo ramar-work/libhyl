@@ -15,6 +15,8 @@
 #ifndef LLUA_H
 #define LLUA_H
 
+#define LD_LEN 128
+
 #define LD_ERRBUF_LEN 1024
 
 enum zlua_error {
@@ -53,6 +55,7 @@ struct mvc_t {
 struct luadata_t {
 	struct HTTPBody *req, *res;
 	lua_State *state;
+#if 0
 	const char *aroute;
 	const char *rroute;
 	const char *apath;
@@ -60,6 +63,15 @@ struct luadata_t {
 	const char *fqdn;
 	const char *root;
 	const char *dctype;
+#else
+	const char aroute[ LD_LEN ];
+	const char rroute[ LD_LEN ];
+	const char apath[ LD_LEN ];
+	const char db[ LD_LEN ];
+	const char fqdn[ LD_LEN ];
+	const char root[ LD_LEN ];
+	const char dctype[ LD_LEN ];
+#endif
 #if 1
 	int status; //can return a different status
 	//other zTables could go here...

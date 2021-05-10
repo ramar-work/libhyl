@@ -1,0 +1,49 @@
+harness: HTTP funct 'filter' failed to execute
+
+=================================================================
+==996545==ERROR: LeakSanitizer: detected memory leaks
+
+Direct leak of 162 byte(s) in 1 object(s) allocated from:
+    #0 0x5625a53eede2 in realloc (/usr/local/bin/hypno-harness+0xe6de2)
+    #1 0x7f4ec433ced6 in zhttp_append_to_uint8t /home/ramar/prj/lib/libhyl/vendor/zhttp.c:206:18
+    #2 0x7f4ec4344e82 in http_finalize_response /home/ramar/prj/lib/libhyl/vendor/zhttp.c:832:8
+    #3 0x7f4ec436603c in http_error /home/ramar/prj/lib/libhyl/vendor/megadeth.c:15:2
+    #4 0x7f4ec436da12 in filter /home/ramar/prj/lib/libhyl/src/lua.c:890:10
+    #5 0x5625a5429669 in main /home/ramar/prj/bin/hypno/./src/cli/harness.c:331:8
+    #6 0x7f4ec7363b24 in __libc_start_main (/usr/lib/libc.so.6+0x27b24)
+
+Direct leak of 16 byte(s) in 1 object(s) allocated from:
+    #0 0x5625a53eede2 in realloc (/usr/local/bin/hypno-harness+0xe6de2)
+    #1 0x7f4ec4345892 in zhttp_add_item_to_list /home/ramar/prj/lib/libhyl/vendor/zhttp.c:179:18
+    #2 0x7f4ec4345670 in http_set_record /home/ramar/prj/lib/libhyl/vendor/zhttp.c:883:2
+    #3 0x7f4ec436600e in http_error /home/ramar/prj/lib/libhyl/vendor/megadeth.c:14:2
+    #4 0x7f4ec436da12 in filter /home/ramar/prj/lib/libhyl/src/lua.c:890:10
+    #5 0x5625a5429669 in main /home/ramar/prj/bin/hypno/./src/cli/harness.c:331:8
+    #6 0x7f4ec7363b24 in __libc_start_main (/usr/lib/libc.so.6+0x27b24)
+
+Indirect leak of 79 byte(s) in 1 object(s) allocated from:
+    #0 0x5625a53eea59 in malloc (/usr/local/bin/hypno-harness+0xe6a59)
+    #1 0x7f4ec433cb37 in zhttp_dupblk /home/ramar/prj/lib/libhyl/vendor/zhttp.c:157:23
+    #2 0x7f4ec4365fd6 in http_error /home/ramar/prj/lib/libhyl/vendor/megadeth.c:14:2
+    #3 0x7f4ec436da12 in filter /home/ramar/prj/lib/libhyl/src/lua.c:890:10
+    #4 0x5625a5429669 in main /home/ramar/prj/bin/hypno/./src/cli/harness.c:331:8
+    #5 0x7f4ec7363b24 in __libc_start_main (/usr/lib/libc.so.6+0x27b24)
+
+Indirect leak of 64 byte(s) in 1 object(s) allocated from:
+    #0 0x5625a53eea59 in malloc (/usr/local/bin/hypno-harness+0xe6a59)
+    #1 0x7f4ec4345453 in http_set_record /home/ramar/prj/lib/libhyl/vendor/zhttp.c:875:14
+    #2 0x7f4ec436600e in http_error /home/ramar/prj/lib/libhyl/vendor/megadeth.c:14:2
+    #3 0x7f4ec436da12 in filter /home/ramar/prj/lib/libhyl/src/lua.c:890:10
+    #4 0x5625a5429669 in main /home/ramar/prj/bin/hypno/./src/cli/harness.c:331:8
+    #5 0x7f4ec7363b24 in __libc_start_main (/usr/lib/libc.so.6+0x27b24)
+
+Indirect leak of 2 byte(s) in 1 object(s) allocated from:
+    #0 0x5625a53eea59 in malloc (/usr/local/bin/hypno-harness+0xe6a59)
+    #1 0x7f4ec433cb37 in zhttp_dupblk /home/ramar/prj/lib/libhyl/vendor/zhttp.c:157:23
+    #2 0x7f4ec4345567 in http_set_record /home/ramar/prj/lib/libhyl/vendor/zhttp.c:881:13
+    #3 0x7f4ec436600e in http_error /home/ramar/prj/lib/libhyl/vendor/megadeth.c:14:2
+    #4 0x7f4ec436da12 in filter /home/ramar/prj/lib/libhyl/src/lua.c:890:10
+    #5 0x5625a5429669 in main /home/ramar/prj/bin/hypno/./src/cli/harness.c:331:8
+    #6 0x7f4ec7363b24 in __libc_start_main (/usr/lib/libc.so.6+0x27b24)
+
+SUMMARY: AddressSanitizer: 323 byte(s) leaked in 5 allocation(s).

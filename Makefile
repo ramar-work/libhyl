@@ -2,7 +2,7 @@
 NAME = hyl
 DFLAGS = -g -O0 -DDEBUG_H -fsanitize=address -fsanitize-undefined-trap-on-error 
 CFLAGS = -Wall -Werror -Wno-unused -Wno-format-security -fPIC -std=c99 -Iinclude -Ivendor
-SFLAGS = -Wall -Werror -Wno-unused -Wno-format-security -std=c99
+SFLAGS = -Wall -Werror -Wno-format-security -std=c99
 CC = clang
 SRC = \
 	vendor/zhttp.c \

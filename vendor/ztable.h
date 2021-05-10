@@ -79,6 +79,9 @@
 #define lt_dump(t) \
 	lt_exec( t, &__ltHistoric, __lt_dump )
 
+#define lt_fdump(t, i) \
+	( __ltHistoric.fd = i ) && lt_exec( t, &__ltHistoric, __lt_dump ) && fflush( stdout )
+
 #define lt_kdump(t) \
 	lt_exec( t, &__ltComplex, __lt_dump )
 
@@ -322,6 +325,7 @@ typedef struct {
 	enum { LT_DUMP_SHORT, LT_DUMP_LONG } dumptype; 
 	enum { LT_CONDENSED, LT_VERBOSE } indextype;
 	const char *customfmt;
+	int fd; 
 	int level; 
 } zhInner;
 
