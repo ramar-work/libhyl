@@ -696,6 +696,7 @@ static const int send_static ( struct HTTPBody *res, const char *dir, const char
 		return http_error( res, 500, err );
 	}
 
+	free( data );
 	return 1;	
 }
 
