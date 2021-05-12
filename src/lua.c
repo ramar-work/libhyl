@@ -4,6 +4,42 @@
 #define FPRINTF( ... ) \
 	fprintf( stderr, __VA_ARGS__ )
 
+#define lua_pushibt(L, i, v, p) \
+	lua_pushinteger(L, i), lua_pushboolean(L, v), lua_settable(L, p)
+
+#define lua_pushict(L, i, v, p) \
+	lua_pushinteger(L, i), lua_pushcclosure(L, v), lua_settable(L, p)
+
+#define lua_pushift(L, i, v, p) \
+	lua_pushinteger(L, i), lua_pushcfunction(L, v), lua_settable(L, p)
+
+#define lua_pushint(L, i, v, p) \
+	lua_pushinteger(L, i), lua_pushnumber(L, v), lua_settable(L, p)
+
+#define lua_pushiit(L, i, v, p) \
+	lua_pushinteger(L, i), lua_pushinteger(L, v), lua_settable(L, p)
+
+#define lua_pushist(L, i, v, p) \
+	lua_pushinteger(L, i), lua_pushstring(L, v), lua_settable(L, p)
+
+#define lua_pushsbt(L, s, v, p) \
+	lua_pushstring(L, s), lua_pushboolean(L, v), lua_settable(L, p)
+
+#define lua_pushsct(L, s, v, p) \
+	lua_pushstring(L, s), lua_pushcclosure(L, v), lua_settable(L, p)
+
+#define lua_pushsft(L, s, v, p) \
+	lua_pushstring(L, s), lua_pushcfunction(L, v), lua_settable(L, p)
+
+#define lua_pushsnt(L, s, v, p) \
+	lua_pushstring(L, s), lua_pushnumber(L, v), lua_settable(L, p)
+
+#define lua_pushsit(L, s, v, p) \
+	lua_pushstring(L, s), lua_pushinteger(L, v), lua_settable(L, p)
+
+#define lua_pushsst(L, s, v, p) \
+	lua_pushstring(L, s), lua_pushstring(L, v), lua_settable(L, p)
+
 const char libname[] = "lua";
 const char rname[] = "route";
 const char def[] = "default";
@@ -75,6 +111,8 @@ int make_read_only ( lua_State *L, const char *table ) {
 
 
 
+
+
 #if 0
 //Load Lua libraries
 static lua_State * lua_load_libs( lua_State **L ) {
@@ -96,7 +134,6 @@ int lua_loadlibs( lua_State *L, struct lua_fset *set, int standard ) {
 	for ( ; set->namespace; set++ ) {
 		lua_newtable( L );
 		for ( struct luaL_Reg *f = set->functions; f->name; f++ ) {
-			FPRINTF( "Registering function %s.%s\n", set->namespace, f->name );
 			lua_pushstring( L, f->name );
 			lua_pushcfunction( L, f->func );	
 			lua_settable( L, 1 );
@@ -535,11 +572,11 @@ static int make_mvc_list ( zKeyval *kv, int i, void *p ) {
 
 
 //Free MVC list
-void free_mvc_list ( void **list ) {
-	for ( void **l = list; *l; l++ ) {
+void free_mvc_list ( void ***list ) {
+	for ( void **l = *list; l && *l; l++ ) {
 		free( *l );
 	} 
-	free( list );
+	free( *list ), *list = NULL;
 }
 
 
@@ -849,9 +886,12 @@ struct lua_lib_t {
 int free_ld ( struct luadata_t *l ) {
 	lua_close( l->state );
 	lt_free( l->zconfig );
-	lt_free( l->zroutes );
+	if ( l->zroutes ) {
+		lt_free( l->zroutes );
+		free( l->zroutes );
+	}
 	lt_free( l->zmodel );
-	//lt_free( ld->zroute );
+	free_mvc_list( (void ***)&(l->pp.imvc_tlist) );
 	return 1;
 }
 
@@ -861,23 +901,14 @@ const int filter
 ( int fd, struct HTTPBody *req, struct HTTPBody *res, struct cdata *conn ) {
 
 	//Define variables and error positions...
-	zTable zc = {0}, zm = {0}, zr = {0};
-#if 1
+	zTable zc = {0}, zm = {0};
 	struct luadata_t ld = {0};
-#else
-	char err[ 128 ] = {0}; 
-	char cpath[ 2048 ] = {0};
-	const char *db, *fqdn, *title, *root, *rpath, *rroute;
-	lua_State *L = NULL;
-	zTable *zroutes = NULL, *croute = NULL, *zroute = NULL;
-	zTable *zconfig = &zc, *zmodel = &zm, *zhttp = &zh; 
-#endif
 	int clen = 0;
 	unsigned char *content = NULL;
 
 	//Initialize the data structure
 	ld.req = req, ld.res = res; 
-	ld.zconfig = &zc, ld.zmodel = &zm, ld.zroutes = &zr;
+	ld.zconfig = &zc, ld.zmodel = &zm, ld.zroutes = NULL;
 	memcpy( (void *)ld.root, conn->hconfig->dir, strlen( conn->hconfig->dir ) );
 
 	//Then initialize the Lua state
@@ -892,20 +923,16 @@ const int filter
 
 	//Need to delegate to static handler when request points to one of the static paths
 	if ( path_is_static( &ld ) ) {
+		free_ld( &ld );
 		return send_static( res, ld.root, req->path );
 	}
-	
+
 	//req->path needs to be modified to return just the path without the ?
 	if ( !getpath( req->path, (char *)ld.apath, LD_LEN ) ) {
 		free_ld( &ld );
 		return http_error( res, 500, "%s", "Failed to extract path." );
 	}
 
-#if 0
-	if ( !setroutes( &ld ) ) {
-		return http_error( res, ld.status, ld.err ); 
-	}
-#endif
 	//Get the routes from the config file.
 	if ( !( ld.zroutes = lt_copy_by_key( ld.zconfig, rkey ) ) ) {
 		free_ld( &ld );
@@ -947,15 +974,12 @@ const int filter
 
 	//Destroy anything having to do with routes 
 	free_route_list( p.iroute_tlist );	
-	lt_free( ld.zroutes );
-	free( ld.zroutes );
-	lt_free( ld.zconfig );
 
 	//Loop through the structure and add read-only structures to Lua, 
 	//you could also add the libraries, but that is a different method
 	for ( struct lua_readonly_t *t = lua_readonly; t->name; t++ ) {
-		fprintf( stderr, "adding '%s'\n", t->name );
 		if ( !t->exec( &ld ) ) {
+			free_ld( &ld );
 			return http_error( req, ld.status, ld.err );
 		}
 		lua_setglobal( ld.state, t->name );
@@ -963,10 +987,9 @@ const int filter
 
 	//Load standard libraries
 	if ( !lua_loadlibs( ld.state, functions, 1 ) ) {
+		free_ld( &ld );
 		return http_error( res, 500, "Failed to initialize Lua standard libs." ); 
 	}
-
-	//Query each model...
 
 	//Execute each model
 	int ccount = 0, tcount = 0; 
@@ -984,9 +1007,10 @@ const int filter
 			}
 
 			//...
-			fprintf( stderr, "Executing model %s\n", mpath );
-			if ( !lua_exec_file( ld.state, mpath, err, sizeof( err ) ) ) {
-				return http_error( res, 500, "%s", err );
+			//fprintf( stderr, "Executing model %s\n", mpath );
+			if ( !lua_exec_file( ld.state, mpath, ld.err, sizeof( ld.err ) ) ) {
+				free_ld( &ld );
+				return http_error( res, 500, "%s", ld.err );
 			}
 
 			//Get name of model file in question 
@@ -998,9 +1022,7 @@ const int filter
 			//Merge previous models
 			if ( tcount > 1 ) {
 				lua_getglobal( ld.state, mkey );
-				if ( lua_isnil( ld.state, -1 ) ) {
-					lua_pop( ld.state, 1 );
-				}
+				( lua_isnil( ld.state, -1 ) ) ? lua_pop( ld.state, 1 ) : 0;
 				lua_merge( ld.state );	
 				lua_setglobal( ld.state, mkey );
 			} 
@@ -1016,21 +1038,16 @@ const int filter
 		lua_pop( ld.state, 1 );
 	else { 
 		//TODO: Find an optimal hash size (also consider using a static hash table)	
-		if ( !lt_init( ld.zmodel, NULL, 2048 ) )
+		if ( !lt_init( ld.zmodel, NULL, 2048 ) ) {
+			free_ld( &ld );
 			return http_error( res, 500, "Could not allocate table for model." );
+		}
 		if ( !lua_to_ztable( ld.state, 1, ld.zmodel ) ) {
+			free_ld( &ld );
 			return http_error( res, 500, "Error in model conversion." );
 		}
 		lt_lock( ld.zmodel );
 	}
-
-#if 0
-	//Rendering a model 
-	if ( 1 ) {
-		lt_fdump( ld.zmodel, 1 );
-		return http_error( res, 200, "Model dumped." );
-	}
-#endif
 
 	//Load all views
 	for ( struct imvc_t **v = ld.pp.imvc_tlist; *v; v++ ) {
@@ -1048,23 +1065,21 @@ const int filter
 				snprintf( vpath, sizeof( vpath ), "%s/%s/%s.%s", ld.root, "views", ld.aroute, (*v)->ext );
 			}
 
-			fprintf( stderr, "Loading view at: %s\n", vpath );
+			//fprintf( stderr, "Loading view at: %s\n", vpath );
 			if ( !( src = read_file( vpath, &len, ld.err, LD_ERRBUF_LEN )	) || !len ) {
+				zrender_free( rz ), free( src ), free_ld( &ld );
 				return http_error( res, 500, "Error opening view '%s': %s", vpath, ld.err );
 			}
 
 			if ( !( render = zrender_render( rz, src, strlen((char *)src), &renlen ) ) ) {
+				zrender_free( rz ), free( src ), free_ld( &ld );
 				return http_error( res, 500, "%s", "Renderer error." );
 			}
 
 			zhttp_append_to_uint8t( &content, &clen, render, renlen ); 
-			zrender_free( rz );
-			free( src );
+			zrender_free( rz ), free( render ), free( src );
 		}
 	}
-
-	//Destroy mvc list
-	free_mvc_list( (void **)ld.pp.imvc_tlist );
 
 	//Set needed info for the response structure
 	res->clen = clen;
@@ -1074,14 +1089,12 @@ const int filter
 
 	//Return the finished message if we got this far
 	if ( !http_finalize_response( res, ld.err, LD_ERRBUF_LEN ) ) {
-		return http_error( res, 500, ld.err );
+		free_ld( &ld );
+		return http_error( res, 500, "%s", ld.err );
 	}
 
-	//Destroy full model
-	lt_free( ld.zmodel );
-
-	//Destroy Lua
-	lua_close( ld.state );
+	//Destroy model & Lua
+	free_ld( &ld ), free( content );
 	return 1;
 }
 

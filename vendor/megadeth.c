@@ -9,11 +9,13 @@ int http_error( struct HTTPBody *res, int status, char *fmt, ... ) {
 	va_start( ap, fmt );
 	vsnprintf( err, sizeof( err ), fmt, ap );
 	va_end( ap );
+	memset( res, 0, sizeof( zhttp_t ) );
+	res->clen = strlen( err );
 	http_set_status( res, status ); 
 	http_set_ctype( res, "text/html" );
-	http_copy_content( res, err, strlen( err ) );
-	http_finalize_response( res, err, strlen( err ) );
-	return 0;
+	http_copy_content( res, err , strlen( err ) );
+	zhttp_t *x = http_finalize_response( res, err, strlen( err ) ); 
+	return x ? 1 : 0;
 }
 
 

@@ -109,7 +109,6 @@ static const char *http_status[] = {
 	[HTTP_504] = "Gateway Timeout"
 };
 
-const char text_html[] = "text/html";
 
 //Set http errors
 static int set_http_error( zhttp_t *entity, HTTP_Error code ) {
@@ -794,6 +793,7 @@ zhttp_t * http_finalize_response ( zhttp_t *entity, char *err, int errlen ) {
 		return NULL;
 	}
 
+	//ZHTTP_PRINTF( "HTTP BODY ptr: %p, size: %d\n", (*entity->body)->value, (*entity->body)->size ); 
 	if ( body && *body && ( !(*body)->value || !(*body)->size ) ) {
 		snprintf( err, errlen, "%s", "No body length specified with response." );
 		return NULL;
@@ -834,7 +834,8 @@ zhttp_t * http_finalize_response ( zhttp_t *entity, char *err, int errlen ) {
 		return NULL;
 	}
 
-	entity->msg = msg, entity->mlen = msglen;
+	entity->msg = msg;
+	entity->mlen = msglen;
 	return entity;
 }
 
@@ -872,7 +873,8 @@ void * http_set_record
 	//Set the members
 	int len = 0;
 	len = entity->lengths[ type ];
-	r->field = zhttp_dupstr( k ), r->size = vlen, r->value = v, r->free = free;
+	r->field = zhttp_dupstr( k ), r->size = vlen, r->value = v;
+
 	zhttp_add_item( list, r, zhttpr_t *, &len );
 	entity->lengths[ type ] = len; //entity->size = vlen;
 	return r;
@@ -883,7 +885,7 @@ void * http_set_record
 static void http_free_records( zhttpr_t **records ) {
 	zhttpr_t **r = records;
 	while ( r && *r ) {
-		if ( (*r)->free ) {
+		if ( *(*r)->field == '.' || (*r)->free ) {
 			free( (*r)->value );
 		}
 
@@ -930,9 +932,20 @@ int http_set_error ( zhttp_t *entity, int status, char *message ) {
 	memset( err, 0, sizeof( err ) );
 	ZHTTP_PRINTF( "status: %d, mlen: %ld, msg: '%s'\n", status, strlen(message), message );
 
-	http_set_status( entity, status );
-	http_set_ctype( entity, text_html );
-	http_copy_content( entity, (unsigned char *)message, strlen( message ) );
+	if ( !http_set_status( entity, status ) ) {
+		ZHTTP_PRINTF( "SET STATUS FAILED!" );
+		return 0;
+	}
+
+	if ( !http_set_ctype( entity, "text/html" ) ) {
+		ZHTTP_PRINTF( "SET CONTENT FAILED!" );
+		return 0;
+	}
+
+	if ( !http_copy_content( entity, (unsigned char *)message, strlen( message ) ) ) {
+		ZHTTP_PRINTF( "SET CONTENT FAILED!" );
+		return 0;
+	}
 
 	if ( !http_finalize_response( entity, err, sizeof(err) ) ) {
 		ZHTTP_PRINTF( "FINALIZE FAILED!: %s", err );

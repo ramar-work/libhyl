@@ -1,22 +1,33 @@
+#!/bin/bash - 
 
 # finally the last slog...
 echo "libhyl Test suite!"
 
 
+# Test cases 
+TESTS=( 
 # non-existent config
-hypno-harness -l lib/libhyl.so -d examples/noconfig.com -u /asdf
-
+#	"examples/noconfig.com|/asdf" 
 # bad syntax config
-#hypno-harness -l lib/libhyl.so -d examples/badconfig.com -u /asdf
-
-# really large config (like 200 routes or something)
-#hypno-harness -l lib/libhyl.so -d examples/badconfig.com -u /asdf
-
+#	"examples/badconfig.com|/asdf" 
 # static paths (small file, <25kb)
-#hypno-harness -l lib/libhyl.so -d examples/stresstest.com -u /assets/tiny.jpg
-
+#	"examples/stresstest.com|/assets/tiny.jpg"
 # static paths (big file, >2mb)
-#hypno-harness -l lib/libhyl.so -d examples/stresstest.com -u /assets/big.jpg 
-
+#	"examples/stresstest.com|/assets/big.jpg"
 # static paths (ridiculous file, >100mb)
-#hypno-harness -l lib/libhyl.so -d examples/stresstest.com -u /assets/testimony.wav 2>err
+#	"examples/stresstest.com|/assets/testimony.wav"
+# find not found domains
+	"examples/stresstest.com|/asdf"
+)
+
+
+# cycle through all of the routes
+for x in ${TESTS[@]}
+do
+	VALS=( `echo $x | awk -F '|' '{ print $1, $2 }'` )
+	printf "\nRunning test: hypno-harness -d ${VALS[0]} -u ${VALS[1]}\n"
+	hypno-harness -l lib/libhyl.so -d ${VALS[0]} -u ${VALS[1]}
+done
+
+
+
